@@ -1,3 +1,4 @@
+import AdminDashboard from "./pages/AdminDashboard"
 import { Routes, Route } from 'react-router-dom'
 import Layout from '@/components/Layout'
 import Home from '@/pages/Home'
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/tools/recipe-creator" element={<RecipeCreator />} />
         <Route path="/tools/character-creator" element={<CharacterCreator />} />
       </Route>
-    </Routes>
+    <Route path="/admin" element={<AdminDashboard />} />
+          </Routes>
   )
 }
