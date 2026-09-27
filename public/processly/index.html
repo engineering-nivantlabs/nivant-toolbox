@@ -59,8 +59,16 @@
     .tpl-card h3{font-size:18px;font-weight:700;margin:10px 0 6px;letter-spacing:-.01em}
     .tpl-card p{font-size:14.2px;color:var(--muted);line-height:1.55}
     .tpl-card .tpl-result{background:var(--green-soft);color:#065f46;padding:9px 12px;border-radius:9px;font-weight:600;font-size:13.2px;margin-top:14px}
-    .tpl-card .tpl-run{margin-top:auto;align-self:flex-start}
     .tpl-card .tpl-result{margin-bottom:18px}
+    .tpl-card .ind-tag{align-self:flex-start}
+    .tpl-foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .tpl-meta{font-size:12px;color:#94a3b8;font-weight:600}
+    .tpl-filters{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-bottom:22px}
+    .tf{font-size:13.5px;font-weight:600;padding:8px 14px;border-radius:999px;border:1.5px solid var(--border);background:#fff;color:#475569;cursor:pointer;transition:.2s}
+    .tf span{color:#94a3b8;font-weight:700;margin-left:3px}
+    .tf:hover{border-color:#c9cee0}
+    .tf.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
+    .tf.on span{color:var(--accent)}
     .runner{background:#fff;border:1px solid var(--border);border-radius:18px;padding:28px;box-shadow:0 14px 44px rgba(15,23,42,.08);scroll-margin-top:92px}
     .runner-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:20px}
     .runner-head h3{font-size:22px;font-weight:800;margin:10px 0 4px;letter-spacing:-.01em}
@@ -93,17 +101,55 @@
     @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
     .pulse{animation:pulse 2s infinite}
     @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(79,70,229,.45)}70%{box-shadow:0 0 0 12px rgba(79,70,229,0)}100%{box-shadow:0 0 0 0 rgba(79,70,229,0)}}
-    .yaml-box{margin-top:22px;border:1px solid var(--border);border-radius:12px;background:#fbfbfd;overflow:hidden}
-    .yaml-box summary{cursor:pointer;list-style:none;padding:14px 44px 14px 18px;font-weight:600;font-size:14.5px;position:relative;user-select:none}
-    .yaml-box summary::-webkit-details-marker{display:none}
-    .yaml-box summary::after{content:"+";position:absolute;right:18px;top:50%;transform:translateY(-50%);font-size:20px;color:var(--accent);transition:transform .25s}
-    .yaml-box[open] summary::after{transform:translateY(-50%) rotate(45deg)}
-    .yaml-hint{font-weight:400;color:#94a3b8;font-size:12.5px;margin-left:6px}
-    .yaml-box pre{margin:0;padding:0 18px 18px;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.7px;line-height:1.75;color:#334155}
+    .yaml-hint{font-weight:400;color:#94a3b8;font-size:12.5px}
+
+    /* category colours, shared by the map, legend and primitives panel */
+    .cat-trigger{--c:#475569;--c-bg:#f8fafc;--c-bd:#cbd5e1}
+    .cat-ai{--c:#4338ca;--c-bg:#eef2ff;--c-bd:#c7d2fe}
+    .cat-data{--c:#0369a1;--c-bg:#f0f9ff;--c-bd:#bae6fd}
+    .cat-action{--c:#047857;--c-bg:#ecfdf5;--c-bd:#a7f3d0}
+    .cat-control{--c:#b45309;--c-bg:#fffbeb;--c-bd:#fde68a}
+
+    /* workflow map + yaml tabs */
+    .wf-panel{margin-top:24px;border:1px solid var(--border);border-radius:12px;background:#fbfbfd;overflow:hidden}
+    .wf-tabs{display:flex;gap:4px;padding:8px 8px 0;border-bottom:1px solid var(--border);background:#fff;overflow-x:auto}
+    .wf-tab{padding:10px 14px;font-weight:600;font-size:14px;color:#64748b;border-bottom:2px solid transparent;margin-bottom:-1px;cursor:pointer;white-space:nowrap}
+    .wf-tab[aria-selected="true"]{color:var(--accent-ink);border-bottom-color:var(--accent)}
+    .wf-pane pre{margin:0;padding:18px;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.7px;line-height:1.75;color:#334155}
+    .wf-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;padding:14px 18px 0;font-size:12px;font-weight:600;color:#64748b}
+    .wf-legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px;background:var(--c-bg);border:1.5px solid var(--c)}
+    .wf{display:flex;flex-direction:column;align-items:center;padding:18px 18px 24px;overflow-x:auto}
+    .wf-row{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+    .wf-node{width:240px;max-width:100%;background:var(--c-bg);border:1.5px solid var(--c-bd);border-left:4px solid var(--c);border-radius:10px;padding:8px 12px;transition:box-shadow .25s,transform .25s,border-color .25s;position:relative}
+    .wf-node b{display:block;font-size:13.5px;font-weight:700;color:#0f172a;line-height:1.3}
+    .wf-node code{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.3px;color:var(--c);margin-top:2px}
+    .wf-node.sm{width:100%;padding:6px 10px}
+    .wf-node.sm b{font-size:12.6px}
+    .wf-node.done{border-color:#34d399;border-left-color:#059669}
+    .wf-node.done::after{content:"✓";position:absolute;top:6px;right:9px;color:#059669;font-weight:800;font-size:12px}
+    .wf-node.active{box-shadow:0 0 0 3px var(--accent);transform:scale(1.03)}
+    .wf-arrow{width:2px;height:18px;background:#cbd5e1;position:relative;flex-shrink:0}
+    .wf-arrow::after{content:"";position:absolute;bottom:-1px;left:-4px;border:5px solid transparent;border-top-color:#cbd5e1;border-bottom:0}
+    .wf-branch .wf-arrow{height:12px}
+    .wf-branches{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,210px);gap:12px;justify-content:center;padding-top:12px;border-top:2px dashed #cbd5e1;max-width:100%}
+    .wf-branch{display:flex;flex-direction:column;align-items:center}
+    .wf-when{font-size:11.5px;font-weight:700;color:#475569;background:#fff;border:1px solid #cbd5e1;border-radius:999px;padding:2px 9px;margin-bottom:8px;text-align:center}
+
+    /* primitives panel */
+    .prims{margin-top:40px;background:#fff;border:1px solid var(--border);border-radius:18px;padding:28px}
+    .prims-head h3{font-size:20px;font-weight:800;letter-spacing:-.01em}
+    .prims-head p{color:var(--muted);font-size:14.5px;line-height:1.55;margin-top:6px;max-width:760px}
+    .prim-groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:18px;margin-top:20px}
+    .pg-title{font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--c);margin-bottom:10px}
+    .pg-list{display:flex;flex-wrap:wrap;gap:6px}
+    .pp{font-size:12.5px;font-weight:600;padding:5px 10px;border-radius:8px;border:1.5px solid var(--border);color:#94a3b8;background:#fff;transition:.25s;cursor:default}
+    .pp em{font-style:normal;font-size:11px;margin-left:5px;opacity:.75}
+    .pp.used{color:var(--c);background:var(--c-bg);border-color:var(--c-bd)}
     .yk{color:var(--accent-ink);font-weight:600}
+    .yp{color:#047857;font-weight:600}
     .yc{color:#059669;font-style:italic}
-    @media (max-width:860px){.runner{padding:20px}.runner-cols{grid-template-columns:1fr}.runner-head{flex-direction:column}.tpl-card .tpl-run{align-self:stretch}.lt{min-width:0}.ls{min-width:0}}
-    @media (prefers-reduced-motion:reduce){.bubble,.runlog li,.run-outcome{animation:none}.pulse{animation:none}.tpl-card:hover{transform:none}}
+    @media (max-width:860px){.runner{padding:20px}.runner-cols{grid-template-columns:1fr}.runner-head{flex-direction:column}.lt{min-width:0}.ls{min-width:0}.prims{padding:20px}.wf-branches{grid-auto-flow:row;grid-auto-columns:auto;grid-template-columns:minmax(0,260px);border-top:0;padding-top:0}}
+    @media (prefers-reduced-motion:reduce){.bubble,.runlog li,.run-outcome{animation:none}.pulse{animation:none}.tpl-card:hover{transform:none}.wf-node.active{transform:none}}
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-brand-500 selection:text-white">
@@ -333,14 +379,16 @@
     </section>
 
     <!-- ============ TEMPLATES + LIVE DEMO ============ -->
+    <!-- Rendered from primitives.js + templates.js by runner.js. Edit the data, not this markup. -->
     <section id="templates" class="bg-white border-y border-slate-200 py-20 scroll-mt-20">
       <div class="max-w-7xl mx-auto px-6">
-        <div class="text-center mb-12 max-w-3xl mx-auto">
+        <div class="text-center mb-10 max-w-3xl mx-auto">
           <span class="inline-block py-1 px-3 rounded-full bg-brand-50 text-brand-700 text-xs font-semibold tracking-wider uppercase mb-4">Template library</span>
           <h2 class="text-3xl font-extrabold text-slate-900">Real problems, ready to run</h2>
-          <p class="text-slate-600 mt-3 leading-relaxed">These eight cover most of what SMEs ask us for — each one started as a real problem from a real business. Pick one and watch a full run: what your customer sees on the left, what the engine did on the right.</p>
+          <p class="text-slate-600 mt-3 leading-relaxed"><span data-count="templates">16</span> templates across <span data-count="industries">16</span> industries. Each one started as a real problem from a real business, and each is just configuration over the same <span data-count="primitives">36</span> building blocks. Pick one and watch a full run: what your customer sees on the left, what the engine did on the right.</p>
         </div>
 
+        <div class="tpl-filters" id="tpl-filters" role="group" aria-label="Filter templates by goal"></div>
         <div class="tpl-grid" id="tpl-grid"><!-- cards rendered by script --></div>
 
         <div class="runner" id="runner">
@@ -374,17 +422,34 @@
             <div>
               <p class="col-label">What the engine did</p>
               <ol class="runlog" id="r-log" aria-live="polite"></ol>
-              <p class="runlog-note">Simulated replay — production runs are logged line-for-line, exactly like this.</p>
+              <p class="runlog-note">Simulated replay. Production runs are logged line-for-line, exactly like this.</p>
             </div>
           </div>
 
-          <details class="yaml-box">
-            <summary>Workflow configuration<span class="yaml-hint">— data, not code (~25 lines of YAML per template)</span></summary>
-            <pre><code id="r-yaml"></code></pre>
-          </details>
+          <div class="wf-panel">
+            <div class="wf-tabs" role="tablist">
+              <button type="button" class="wf-tab" role="tab" aria-selected="true" aria-controls="wf-pane-map">Workflow map</button>
+              <button type="button" class="wf-tab" role="tab" aria-selected="false" aria-controls="wf-pane-yaml">Configuration <span class="yaml-hint">· <span id="r-yaml-count"></span> lines of YAML, no code</span></button>
+            </div>
+            <div class="wf-pane" id="wf-pane-map" role="tabpanel">
+              <div class="wf-legend">
+                <span class="cat-trigger">Trigger</span><span class="cat-ai">AI</span><span class="cat-data">Data</span><span class="cat-action">Business action</span><span class="cat-control">Control flow</span>
+              </div>
+              <div id="r-map"></div>
+            </div>
+            <div class="wf-pane" id="wf-pane-yaml" role="tabpanel" hidden><pre><code id="r-yaml"></code></pre></div>
+          </div>
         </div>
 
-        <p class="text-center text-sm text-slate-500 mt-10">Don't see your problem here? These are the ones we keep re-building — <strong class="text-slate-800">the audit finds your version.</strong></p>
+        <div class="prims">
+          <div class="prims-head">
+            <h3>One engine, <span data-count="primitives">36</span> building blocks</h3>
+            <p>We don't build <span data-count="templates">16</span> custom automations. We build reusable primitives once, then configure them per business. Highlighted: the blocks <b id="prim-current"></b> uses. The ×N shows how many templates reuse each one.</p>
+          </div>
+          <div class="prim-groups" id="prim-groups"></div>
+        </div>
+
+        <p class="text-center text-sm text-slate-500 mt-10">Don't see your problem here? These are the ones we keep re-building. <strong class="text-slate-800">The audit finds your version.</strong></p>
       </div>
     </section>
 
@@ -535,401 +600,13 @@
   </footer>
 
   <script>
-  /* ============ TEMPLATE LIBRARY + DEMO RUNNER ============ */
-  (function () {
-    const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const STEP_MS = RM ? 0 : 800;
-
-    const TEMPLATES = [
-      {
-        id: 'lead', industry: 'Real estate', name: 'The 11pm Lead',
-        problem: 'Portal and WhatsApp leads arrive at all hours. A reply within 5 minutes is ~21× more likely to convert than one after 30 — but your team replies at 9am.',
-        result: 'First reply in 6 seconds, any hour.',
-        steps: ['Trigger', 'Extract', 'Qualify', 'Decide', 'CRM', 'Reply', 'Follow-up'],
-        incoming: { meta: 'WhatsApp · 23:47', text: 'Hi! Is the 2BHK in Marina Tower still available? Budget around 130k/yr, looking to move next month. — Sara' },
-        artifact: { meta: 'Reply sent · 23:47:06 — six seconds later', text: 'Hi Sara! Yes — the 2BHK in Marina Tower is available 😊 1,100 sqft, sea-facing, 130k/yr. I have viewing slots tomorrow at 10:00 or 16:00 — which suits you better? — Rana, Skyline Properties' },
-        outcome: '<b>First reply: 6 seconds.</b> Viewing booked at 08:02 the next morning — six hours before the portal\'s next-fastest agent even opened WhatsApp.',
-        log: [
-          { t: '23:47:01', s: 'Trigger',   d: 'WhatsApp message received · wa_9f2c', chip: 0 },
-          { t: '23:47:02', s: 'Extract',   d: 'intent: viewing · budget: 130k/yr · area: Marina · timeline: 30 days', chip: 1 },
-          { t: '23:47:04', s: 'Qualify',   d: 'score 0.87 — HOT · budget + timeline + exact unit match', chip: 2 },
-          { t: '23:47:04', s: 'Decide',    d: 'score > 0.7 → route to Marina specialist agent', chip: 3 },
-          { t: '23:47:05', s: 'CRM',       d: 'lead #4821 created · dedup-matched to portal enquiry', chip: 4 },
-          { t: '23:47:06', s: 'Reply',     d: 'personalised WhatsApp sent via Business API', chip: 5, artifact: true },
-          { t: '23:47:07', s: 'Follow-up', d: 'if no viewing within 24h → send viewing_nudge_v2', chip: 6 }
-        ],
-        yaml: `workflow: speed-to-lead-realestate
-version: 7
-mode: auto            # promoted after 42 clean review-mode runs
-trigger:
-  type: whatsapp.inbound
-  idempotency_key: message_id
-steps:
-  - id: extract
-    type: ai.extract
-    fields: [intent, budget, area, timeline]
-  - id: qualify
-    type: ai.score
-    rules: lead-scoring-v3.md
-    output: lead_score
-  - id: route
-    type: decide.branch
-    when: lead_score > 0.7
-    then: [crm.create, agent.notify, whatsapp.reply, followup.schedule]
-    else: [crm.create, nurture.enroll]
-  - id: viewing_nudge
-    type: schedule.delay
-    if_no_viewing_in: 24h
-    then: whatsapp.template viewing_nudge_v2`
-      },
-      {
-        id: 'noshow', industry: 'Clinics', name: 'The No-Show Killer',
-        problem: 'One in four patients doesn\'t show up. The waitlist that could fill those chairs lives in somebody\'s head.',
-        result: 'Empty slot refilled in 39 minutes, hands-free.',
-        steps: ['Trigger', 'Release', 'Offer waitlist', 'Confirm', 'Update'],
-        incoming: { meta: 'WhatsApp · Thu 09:12', text: 'So sorry, can\'t make Thursday 4pm, something came up at work 😔 — Laila' },
-        artifact: { meta: 'WhatsApp to next-in-line · 39 minutes later', text: 'Hi Omar! A slot just opened Thursday 16:00 with Dr. Lena — you\'re first on the waitlist. Shall I book you in? Reply YES and it\'s yours 🙌' },
-        outcome: '<b>Chair refilled in 39 minutes.</b> No-show cost: zero. Front-desk minutes spent: zero.',
-        log: [
-          { t: 'Thu 09:12', s: 'Trigger',  d: 'cancellation received · appt #A1042 (Thu 16:00, Dr. Lena)', chip: 0 },
-          { t: '09:12',     s: 'Release',  d: 'slot Thu 16:00 opened · calendar + front desk synced', chip: 1 },
-          { t: '09:13',     s: 'Offer',    d: 'waitlist matched 3 patients (physio follow-up) · offers sent', chip: 2 },
-          { t: '09:51',     s: 'Confirm',  d: 'Omar accepted → new appointment #A1055 booked', chip: 3, artifact: true },
-          { t: '09:51',     s: 'Update',   d: '2 unused offers released · reminders scheduled for Omar', chip: 4 }
-        ],
-        yaml: `workflow: appointment-refill
-version: 4
-mode: auto
-triggers:
-  - type: schedule.reminder
-    offsets: [48h, 24h, 3h]
-  - type: whatsapp.inbound
-    match: [cancel, reschedule]
-steps:
-  - id: release
-    type: calendar.release
-    notify: [frontdesk]
-  - id: offer
-    type: waitlist.pop
-    match: [service_type, proximity]
-    limit: 3
-    timeout: 2h
-  - id: confirm
-    type: whatsapp.confirm
-    expect: yes_no
-  - id: book
-    type: [calendar.book, reminder.schedule]`
-      },
-      {
-        id: 'chaser', industry: 'Any B2B / services', name: 'The Polite Chaser',
-        problem: 'You hate chasing invoices — so they get chased late, once, apologetically. Cash flow pays the price.',
-        result: 'Paid on day 8. Zero awkward calls.',
-        steps: ['Trigger', 'Decide', 'Send', 'Escalate', 'Reconcile'],
-        incoming: { meta: 'Overdue check · daily 09:00', text: 'Invoice #1042 — $3,480 — due 1 Oct · now 3 days overdue (to: Daniel C.)' },
-        artifact: { meta: 'WhatsApp nudge · day 7', text: 'Hi Daniel — floating invoice #1042 ($3,480, due 1 Oct) to the top of your inbox. No stress if it\'s already scheduled — just making sure it didn\'t get buried. Anything unclear, happy to walk through it. — Priya' },
-        outcome: '<b>Paid on day 8, zero awkward calls.</b> The tone ladder does the chasing, so your team never has to.',
-        log: [
-          { t: 'Oct 4 09:00', s: 'Trigger',    d: 'daily overdue check · 1 invoice matched: #1042 (+3d)', chip: 0 },
-          { t: '09:00',       s: 'Decide',     d: 'first miss, amount < $5k → tone: gentle, channel: email', chip: 1 },
-          { t: '09:01',       s: 'Send',       d: 'nudge #1 — friendly email, invoice attached', chip: 2 },
-          { t: 'Oct 8 09:00', s: 'Escalate',   d: 'still unpaid (+7d) → WhatsApp, friendly-but-clear', chip: 3, artifact: true },
-          { t: 'Oct 12 10:22', s: 'Reconcile', d: 'payment received ✓ marked paid · thank-you sent', chip: 4 }
-        ],
-        yaml: `workflow: invoice-chaser
-version: 5
-mode: auto
-trigger:
-  type: schedule.check
-  daily_at: 09:00
-  source: invoices.overdue
-steps:
-  - id: tone
-    type: decide.switch
-    on: days_overdue
-    1_7:   { channel: email,    tone: gentle }
-    8_13:  { channel: whatsapp, tone: friendly }
-    14_30: { channel: email,    tone: firm, cc: accounts }
-  - id: send
-    type: msg.send
-    attach: [invoice, statement]
-  - id: reconcile
-    type: payments.watch
-    on_paid: [mark_paid, thanks.send]`
-      },
-      {
-        id: 'quote', industry: 'Contractors / trades', name: 'The Quote Follow-Up Machine',
-        problem: 'You send the quote, then… nothing. The job usually goes to whoever follows up — and following up feels like begging.',
-        result: 'Four-touch cadence. Job booked day 7.',
-        steps: ['Trigger', 'Cadence', 'Follow-up', 'Detect reply', 'Close'],
-        incoming: { meta: 'System event · Mon 10:14', text: 'Quote #Q-218 sent to Marcus — $4,200, bathroom refit · response tracking: on' },
-        artifact: { meta: 'Email · day 2', text: 'Hi Marcus — following up on your bathroom refit quote ($4,200). We just wrapped a near-identical job on Elm St; photos attached if you\'d like a look. Any questions, or shall I pencil you in for a start date? — Sam, Riverview Bathrooms' },
-        outcome: '<b>Job booked on day 7</b> — with the four touches nobody ever gets around to making.',
-        log: [
-          { t: 'Mon 10:14', s: 'Trigger',    d: 'quote #Q-218 delivered ($4,200 · bathroom refit)', chip: 0 },
-          { t: 'Mon 10:14', s: 'Cadence',    d: 'sequence armed: day 2 value · day 4 FAQ · day 7 expiry', chip: 1 },
-          { t: 'Wed 10:15', s: 'Follow-up',  d: 'touch #1 sent — recap + Elm St. job photos', chip: 2, artifact: true },
-          { t: 'Fri 10:15', s: 'Follow-up',  d: 'touch #2 sent — objection FAQ + finance options', chip: 2 },
-          { t: 'Mon 14:32', s: 'Detect reply', d: 'reply received → classified: go_ahead (0.94)', chip: 3 },
-          { t: '14:33',     s: 'Close',      d: 'job created · deposit invoice sent · start date held', chip: 4 }
-        ],
-        yaml: `workflow: quote-followup
-version: 3
-mode: auto
-trigger:
-  type: quote.delivered
-steps:
-  - id: cadence
-    type: schedule.sequence
-    day_2:  email.value     # recap + proof
-    day_4:  email.faq       # objections answered
-    day_7:  email.expiry    # quote validity
-    day_14: email.breakup   # polite close
-  - id: classify
-    type: ai.classify
-    intents: [go_ahead, questions, not_now]
-  - id: close
-    type: decide.branch
-    when: intent == go_ahead
-    then: [job.create, invoice.deposit, calendar.hold]`
-      },
-      {
-        id: 'admissions', industry: 'Education / coaching', name: 'Admissions Overflow',
-        problem: 'Admissions season means 100+ enquiries a day. Counsellors drown in triage and leads go cold over the weekend.',
-        result: 'Enquiry → matched → booked in 2 minutes.',
-        steps: ['Trigger', 'Match', 'Assign', 'Send', 'Book'],
-        incoming: { meta: 'Website form · 18:32', text: 'Hi — interested in the Data Analytics course. I work in banking, can only study evenings. — Ahmed' },
-        artifact: { meta: 'Email · 38 seconds later', text: 'Hi Ahmed — great fit: our Data Analytics evening track was built for banking professionals (92% of modules run after 6pm). Brochure attached. If you\'d like a 20-minute chat, Nadia — our finance-careers counsellor — has Tuesday 18:30 open: [book].' },
-        outcome: '<b>Answered in 2 minutes at 6:32pm.</b> Met the counsellor Tuesday. Enrolled Friday.',
-        log: [
-          { t: '18:32:41', s: 'Trigger', d: 'form enquiry received · form_7731', chip: 0 },
-          { t: '18:33:02', s: 'Match',   d: 'Data Analytics (evening) 92% · AI for Finance 87%', chip: 1 },
-          { t: '18:33:03', s: 'Assign',  d: 'counsellor: Nadia — lowest load, banking background', chip: 2 },
-          { t: '18:33:05', s: 'Send',    d: 'brochure + evening schedule + booking link', chip: 3, artifact: true },
-          { t: '19:10:22', s: 'Book',    d: 'consult booked Tue 18:30 · reminders armed', chip: 4 }
-        ],
-        yaml: `workflow: admissions-overflow
-version: 6
-mode: auto
-trigger:
-  type: form.submit        # same flow: whatsapp, walk-in sheet
-  idempotency_key: form_id + email
-steps:
-  - id: match
-    type: ai.match
-    catalog: programs.yaml
-    weights: [schedule_fit, background, budget]
-    top_k: 2
-  - id: assign
-    type: route.least_loaded
-    skills: industry_background
-  - id: outreach
-    type: email.send
-    attach: program.brochure
-    include: booking_link
-  - id: remind
-    type: schedule.reminder
-    offsets: [24h_before, 1h_before]`
-      },
-      {
-        id: 'report', industry: 'Any business', name: 'The Monday Report',
-        problem: 'Every Monday, someone burns two hours copy-pasting from five tabs into a report nobody enjoys making.',
-        result: 'Report lands before anyone arrives.',
-        steps: ['Schedule', 'Collect', 'Aggregate', 'Summarize', 'Deliver'],
-        incoming: { meta: 'Schedule · every Monday 08:00', text: 'Weekly business report — sources: CRM, enrolments sheet, WhatsApp, ad spend.' },
-        artifact: { meta: 'Email · 08:00, before anyone arrives', text: 'Weekly recap — Oct 7. 38 new leads (+12%), 12 enrolments. WhatsApp is still your best channel at $31/lead vs $67 from ads — consider shifting budget. ⚠ Flag: 5 leads from Thursday\'s campaign had invalid numbers; recommend pausing that ad set. Full breakdown attached.' },
-        outcome: '<b>Two hours reclaimed, every week.</b> The report nobody had time to make, made before coffee.',
-        log: [
-          { t: '08:00:00', s: 'Schedule',  d: 'weekly report triggered (cron: 0 8 * * MON)', chip: 0 },
-          { t: '08:00:04', s: 'Collect',   d: '38 leads (CRM) · 12 enrolments (Sheets) · 214 chats (WhatsApp) · $1,840 (ads)', chip: 1 },
-          { t: '08:00:07', s: 'Aggregate', d: 'cost/lead $48.40 · conversion 31.6% · top channel: WhatsApp ($31/lead)', chip: 2 },
-          { t: '08:00:11', s: 'Summarize', d: 'AI drafted exec summary + 3 flags', chip: 3, artifact: true },
-          { t: '08:00:12', s: 'Deliver',   d: 'PDF emailed to owner, sales, marketing', chip: 4 }
-        ],
-        yaml: `workflow: weekly-report
-version: 9
-mode: auto
-trigger:
-  type: schedule.cron
-  expr: "0 8 * * MON"
-steps:
-  - id: collect
-    type: data.pull
-    sources: [crm.leads, sheets.enrolments, whatsapp.stats, ads.spend]
-  - id: aggregate
-    type: data.transform
-    metrics: [cost_per_lead, conversion_rate, channel_rank]
-  - id: summarize
-    type: ai.summarize
-    style: executive
-    flags: [anomalies, underperformers]
-  - id: deliver
-    type: email.pdf
-    to: [owner, sales, marketing]`
-      },
-      {
-        id: 'churn', industry: 'Memberships / subscriptions', name: 'The Silent Churn Rescuer',
-        problem: 'Failed card payments quietly end memberships. By the time anyone notices, the member is long gone.',
-        result: '68% recovered within 72 hours.',
-        steps: ['Trigger', 'Retry', 'Notify', 'Offer', 'Recover'],
-        incoming: { meta: 'System event · 03:12', text: 'Payment failed — member #M-214 (Sarah K.) — card ending 4471 expired.' },
-        artifact: { meta: 'WhatsApp · morning after', text: 'Hi Sarah — your card ending 4471 expired, so this month\'s payment didn\'t go through. No stress: update it here [secure link] and everything continues as normal. Rather pause a month? Just reply PAUSE — your streak stays.' },
-        outcome: '<b>68% of failed payments recovered within 72 hours</b> — without a single awkward call.',
-        log: [
-          { t: '03:12',        s: 'Trigger', d: 'payment declined · reason: card_expired', chip: 0 },
-          { t: '03:12',        s: 'Retry',   d: 'smart retry #1 → declined · next attempt scheduled', chip: 1 },
-          { t: '08:30',        s: 'Notify',  d: 'WhatsApp + email with secure card-update link', chip: 2, artifact: true },
-          { t: '+48h',         s: 'Offer',   d: 'no update → win-back offered: pause 1 month, keep streak', chip: 3 },
-          { t: 'Day 4 · 09:41', s: 'Recover', d: 'card updated ✓ payment retried ✓ membership active', chip: 4 }
-        ],
-        yaml: `workflow: failed-payment-rescue
-version: 4
-mode: auto
-trigger:
-  type: payment.failed
-steps:
-  - id: retry
-    type: payment.retry
-    ladder: [immediate, 24h, 3d]
-  - id: notify
-    type: whatsapp.send
-    template: card_update_link
-    fallback: email
-  - id: save
-    type: decide.branch
-    when: no_update_after 48h
-    then: offer.pause_one_month
-  - id: recover
-    type: payment.watch
-    on_success: membership.reactivate`
-      },
-      {
-        id: 'reviews', industry: 'Local services', name: 'The Review Harvester',
-        problem: 'Happy customers mean to leave a review and never do. Unhappy ones find Google within the hour.',
-        result: '38 reviews in a quarter. The 2★ never went public.',
-        steps: ['Trigger', 'Ask', 'Branch', 'Route', 'Respond'],
-        incoming: { meta: 'System event · Tue 10:00', text: 'Job #771 (AC service, Fatima R.) marked complete — 24h ago.' },
-        artifact: { meta: 'WhatsApp · 24h after the job', text: 'Hi Fatima — hope the AC is running ice-cold 😎 If the service hit the mark, a quick Google review genuinely helps a small team like ours: [one-tap link]. If anything fell short, reply here and we\'ll fix it first.' },
-        outcome: '<b>38 reviews in one quarter</b> — and the 2★ never reached Google. It reached the manager\'s phone in 40 seconds, with a drafted reply awaiting approval.',
-        log: [
-          { t: 'Tue 10:00', s: 'Trigger',  d: 'job #771 complete +24h → review window open', chip: 0 },
-          { t: '10:00',     s: 'Ask',      d: 'review request sent (WhatsApp, one-tap link)', chip: 1, artifact: true },
-          { t: 'Wed 09:15', s: 'Branch',   d: 'rating 5★ received on Google ✓', chip: 2 },
-          { t: '09:15',     s: 'Route',    d: 'thank-you + referral code sent automatically', chip: 3 },
-          { t: 'Thu 16:40', s: 'Respond',  d: 'another job rated 2★ → intercepted · manager alerted · recovery reply drafted for approval', chip: 4 }
-        ],
-        yaml: `workflow: review-harvester
-version: 5
-mode: auto            # the ask is automatic; replies stay gated
-trigger:
-  type: job.completed
-  delay: 24h
-steps:
-  - id: ask
-    type: whatsapp.send
-    template: review_request_v3
-    link: google.one_tap
-  - id: branch
-    type: decide.switch
-    on: rating
-    4_5: [thanks.send, referral.code]
-    1_3: [intercept, manager.alert]
-  - id: draft_reply
-    type: ai.generate
-    mode: review          # a human approves before sending`
-      }
-    ];
-
-    const el = {
-      grid: document.getElementById('tpl-grid'),
-      industry: document.getElementById('r-industry'),
-      name: document.getElementById('r-name'),
-      problem: document.getElementById('r-problem'),
-      chips: document.getElementById('r-chips'),
-      inMeta: document.getElementById('r-in-meta'),
-      inText: document.getElementById('r-in-text'),
-      art: document.getElementById('r-artifact'),
-      artMeta: document.getElementById('r-art-meta'),
-      artText: document.getElementById('r-art-text'),
-      outcome: document.getElementById('r-outcome'),
-      log: document.getElementById('r-log'),
-      yaml: document.getElementById('r-yaml'),
-      run: document.getElementById('r-run'),
-      replay: document.getElementById('r-replay'),
-      runner: document.getElementById('runner')
-    };
-
-    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const hl = y => esc(y)
-      .replace(/^( *)(- )?([\w.-]+):/gm, (m, a, b, k) => a + (b || '') + '<span class="yk">' + k + '</span>:')
-      .replace(/(#[^\n]*)/g, '<span class="yc">$1</span>');
-    const sleep = ms => new Promise(r => setTimeout(r, ms));
-    const byId = id => TEMPLATES.find(t => t.id === id);
-
-    let current = null, runToken = 0;
-
-    el.grid.innerHTML = TEMPLATES.map(t => `
-      <article class="tpl-card" data-tpl="${t.id}">
-        <span class="ind-tag" style="align-self:flex-start">${esc(t.industry)}</span>
-        <h3>${esc(t.name)}</h3>
-        <p>${esc(t.problem)}</p>
-        <p class="tpl-result">${esc(t.result)}</p>
-        <button type="button" class="btn btn-primary btn-sm tpl-run" data-tpl="${t.id}">▶ Run the demo</button>
-      </article>`).join('');
-
-    function load(id) {
-      const t = byId(id); if (!t) return;
-      current = id; runToken++;
-      el.industry.textContent = t.industry;
-      el.name.textContent = t.name;
-      el.problem.textContent = t.problem;
-      el.chips.innerHTML = t.steps.map(s => `<span class="rchip">${esc(s)}</span>`).join('<span class="rsep">→</span>');
-      el.inMeta.textContent = t.incoming.meta;
-      el.inText.textContent = t.incoming.text;
-      el.art.hidden = true; el.outcome.hidden = true; el.replay.hidden = true; el.run.hidden = false;
-      el.log.innerHTML = '<li class="runlog-empty">Press ▶ Run demo to replay a logged run.</li>';
-      el.yaml.innerHTML = hl(t.yaml);
-      document.querySelectorAll('.tpl-card').forEach(c => c.classList.toggle('active', c.dataset.tpl === id));
-    }
-
-    async function run() {
-      const t = byId(current); if (!t) return;
-      const token = ++runToken;
-      el.run.classList.remove('pulse');
-      el.run.hidden = true; el.replay.hidden = true;
-      el.art.hidden = true; el.outcome.hidden = true;
-      el.log.innerHTML = '';
-      const chips = [...el.chips.querySelectorAll('.rchip')];
-      for (const l of t.log) {
-        if (STEP_MS) await sleep(STEP_MS);
-        if (token !== runToken) return;
-        const li = document.createElement('li');
-        li.innerHTML = `<span class="lt">${esc(l.t)}</span><span class="ls">${esc(l.s)}</span><span class="ld">${esc(l.d)}</span><span class="lok">✓</span>`;
-        el.log.appendChild(li);
-        chips.forEach((c, ci) => { c.classList.toggle('done', ci <= l.chip); c.classList.toggle('active', ci === l.chip); });
-        if (l.artifact) {
-          el.artMeta.textContent = t.artifact.meta;
-          el.artText.textContent = t.artifact.text;
-          el.art.hidden = false;
-        }
-      }
-      if (token !== runToken) return;
-      chips.forEach(c => { c.classList.add('done'); c.classList.remove('active'); });
-      el.outcome.innerHTML = t.outcome; el.outcome.hidden = false;
-      el.replay.hidden = false;
-    }
-
-    el.grid.addEventListener('click', e => {
-      const btn = e.target.closest('.tpl-run');
-      if (!btn) return;
-      load(btn.dataset.tpl);
-      el.runner.scrollIntoView({ behavior: RM ? 'auto' : 'smooth', block: 'start' });
-      run();
-    });
-    el.run.addEventListener('click', run);
-    el.replay.addEventListener('click', run);
-
-    load(TEMPLATES[0].id);
-  })();
+    /* Load catalog, templates and runner relative to this page, even when it's served as /processly (no trailing slash). */
+    (function () {
+      var p = location.pathname, base = /\/$|\.html?$/.test(p) ? '' : p.split('/').pop() + '/';
+      ['primitives.js', 'templates.js', 'runner.js'].forEach(function (f) {
+        var s = document.createElement('script'); s.src = base + f; s.async = false; document.body.appendChild(s);
+      });
+    })();
   </script>
 
 </body>
