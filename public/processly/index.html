@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Processly — We map how your business works, then automate what pays</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            dark: {
+              900: '#0b0f19',
+              800: '#111827',
+              700: '#1f2937'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* tokens used by the template runner — mapped to the Tailwind brand palette */
+    :root{
+      --accent:#4f46e5;          /* brand-600 */
+      --accent-soft:#eef2ff;     /* brand-50 */
+      --accent-ink:#4338ca;      /* brand-700 */
+      --green:#059669;           /* emerald-600 */
+      --green-soft:#ecfdf5;      /* emerald-50 */
+      --muted:#475569;           /* slate-600 */
+      --border:#e2e8f0;          /* slate-200 */
+      --radius:14px;
+    }
+    [hidden]{display:none!important}
+
+    /* shared helpers the runner markup relies on */
+    .ind-tag{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent-ink);background:var(--accent-soft);padding:4px 10px;border-radius:999px}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 20px;border-radius:10px;font-weight:600;font-size:14.5px;cursor:pointer;transition:background .2s,border-color .2s,color .2s;border:1px solid transparent;white-space:nowrap}
+    .btn-primary{background:var(--accent);color:#fff;box-shadow:0 1px 2px rgba(15,23,42,.08)}
+    .btn-primary:hover{background:var(--accent-ink)}
+    .btn-ghost{background:#fff;color:#334155;border-color:#cbd5e1}
+    .btn-ghost:hover{background:#f8fafc}
+    .btn-sm{padding:8px 14px;font-size:13.5px}
+    .btn:focus-visible,.tpl-card:focus-within{outline:none;box-shadow:0 0 0 3px var(--accent-soft),0 0 0 5px var(--accent)}
+
+    /* ---------- templates & demo runner ---------- */
+    .tpl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px;margin-bottom:40px}
+    .tpl-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:24px;display:flex;flex-direction:column;transition:.2s}
+    .tpl-card:hover{transform:translateY(-2px);border-color:#c9cee0;box-shadow:0 10px 28px rgba(15,23,42,.07)}
+    .tpl-card.active{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+    .tpl-card h3{font-size:18px;font-weight:700;margin:10px 0 6px;letter-spacing:-.01em}
+    .tpl-card p{font-size:14.2px;color:var(--muted);line-height:1.55}
+    .tpl-card .tpl-result{background:var(--green-soft);color:#065f46;padding:9px 12px;border-radius:9px;font-weight:600;font-size:13.2px;margin-top:14px}
+    .tpl-card .tpl-run{margin-top:auto;align-self:flex-start}
+    .tpl-card .tpl-result{margin-bottom:18px}
+    .runner{background:#fff;border:1px solid var(--border);border-radius:18px;padding:28px;box-shadow:0 14px 44px rgba(15,23,42,.08);scroll-margin-top:92px}
+    .runner-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;margin-bottom:20px}
+    .runner-head h3{font-size:22px;font-weight:800;margin:10px 0 4px;letter-spacing:-.01em}
+    .runner-head p{color:var(--muted);font-size:14.5px;max-width:560px;line-height:1.55}
+    .runner-actions{display:flex;gap:10px;flex-shrink:0}
+    .run-chips{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-bottom:24px}
+    .rchip{font-size:12.5px;font-weight:700;padding:7px 13px;border-radius:999px;border:1.5px solid var(--border);color:#64748b;background:#fff;transition:.25s;white-space:nowrap}
+    .rchip.active{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);transform:translateY(-1px)}
+    .rchip.done{border-color:#a7f3d0;background:var(--green-soft);color:#047857}
+    .rsep{color:#cbd5e1;font-size:12px}
+    .runner-cols{display:grid;grid-template-columns:1fr 1fr;gap:26px}
+    .col-label{font-size:11.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#94a3b8;margin-bottom:12px}
+    .bubble{border-radius:14px;padding:13px 15px;font-size:14.2px;line-height:1.55;margin-bottom:12px;animation:pop .35s ease}
+    .bubble.in{background:#f1f5f9;border:1px solid var(--border);border-top-left-radius:4px}
+    .bubble.out{background:var(--green-soft);border:1px solid #a7f3d0;border-top-right-radius:4px}
+    .bubble p{color:#1e293b}
+    .bubble-meta{display:block;font-size:11.3px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+    .bubble.out .bubble-meta{color:#047857}
+    .run-outcome{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:14px 16px;font-size:14.2px;font-weight:500;line-height:1.55;animation:pop .35s ease}
+    .run-outcome b{color:#a5b4fc}
+    .runlog{list-style:none;min-height:180px;padding:0;margin:0}
+    .runlog li{display:flex;gap:10px;align-items:baseline;padding:8px 10px;border-radius:8px;font-size:13.2px;animation:pop .3s ease}
+    .runlog li:nth-child(odd){background:#fbfbfd}
+    .runlog-empty{color:#94a3b8;font-style:italic;justify-content:center;padding:24px 10px!important}
+    .lt{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.6px;color:#94a3b8;white-space:nowrap;min-width:66px}
+    .ls{font-weight:800;font-size:11.3px;text-transform:uppercase;letter-spacing:.04em;color:var(--accent);min-width:84px}
+    .ld{color:#334155;flex:1}
+    .lok{color:var(--green);font-weight:800}
+    .runlog-note{font-size:12px;color:#94a3b8;font-style:italic;margin-top:10px}
+    @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .pulse{animation:pulse 2s infinite}
+    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(79,70,229,.45)}70%{box-shadow:0 0 0 12px rgba(79,70,229,0)}100%{box-shadow:0 0 0 0 rgba(79,70,229,0)}}
+    .yaml-box{margin-top:22px;border:1px solid var(--border);border-radius:12px;background:#fbfbfd;overflow:hidden}
+    .yaml-box summary{cursor:pointer;list-style:none;padding:14px 44px 14px 18px;font-weight:600;font-size:14.5px;position:relative;user-select:none}
+    .yaml-box summary::-webkit-details-marker{display:none}
+    .yaml-box summary::after{content:"+";position:absolute;right:18px;top:50%;transform:translateY(-50%);font-size:20px;color:var(--accent);transition:transform .25s}
+    .yaml-box[open] summary::after{transform:translateY(-50%) rotate(45deg)}
+    .yaml-hint{font-weight:400;color:#94a3b8;font-size:12.5px;margin-left:6px}
+    .yaml-box pre{margin:0;padding:0 18px 18px;overflow-x:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.7px;line-height:1.75;color:#334155}
+    .yk{color:var(--accent-ink);font-weight:600}
+    .yc{color:#059669;font-style:italic}
+    @media (max-width:860px){.runner{padding:20px}.runner-cols{grid-template-columns:1fr}.runner-head{flex-direction:column}.tpl-card .tpl-run{align-self:stretch}.lt{min-width:0}.ls{min-width:0}}
+    @media (prefers-reduced-motion:reduce){.bubble,.runlog li,.run-outcome{animation:none}.pulse{animation:none}.tpl-card:hover{transform:none}}
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-brand-500 selection:text-white">
+
+  <!-- Navigation -->
+  <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center space-x-1">
+          <span class="w-3 h-3 rounded-full bg-brand-600"></span>
+          <span class="w-3 h-3 rounded-full bg-brand-500"></span>
+        </div>
+        <span class="text-2xl font-bold tracking-tight text-slate-900">Processly</span>
+      </div>
+
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
+        <a href="#how-it-works" class="hover:text-brand-600 transition">How it works</a>
+        <a href="#what-we-automate" class="hover:text-brand-600 transition">What we automate</a>
+        <a href="#industries" class="hover:text-brand-600 transition">Industries</a>
+        <a href="#templates" class="hover:text-brand-600 transition">Templates</a>
+        <a href="#pricing" class="hover:text-brand-600 transition">Pricing</a>
+        <a href="#faq" class="hover:text-brand-600 transition">FAQ</a>
+      </nav>
+
+      <a href="#contact" class="hidden sm:inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-brand-600 text-white font-medium text-sm hover:bg-brand-700 shadow-sm transition">
+        Book discovery call
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="max-w-7xl mx-auto px-6 pt-20 pb-16 text-center">
+      <span class="inline-block py-1 px-3 rounded-full bg-brand-50 text-brand-700 text-xs font-semibold tracking-wider uppercase mb-6">
+        Process-First Automation Studio
+      </span>
+      <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-900 max-w-4xl mx-auto leading-[1.15]">
+        We map how your business works. Then automate what actually pays.
+      </h1>
+      <p class="mt-6 text-lg sm:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
+        Most agencies sell you AI agents. We start with your process — map it, find the repetitive work, show you the ROI, and only then build. Every automation runs behind a human approval gate until it earns autonomy.
+      </p>
+
+      <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
+        <a href="#contact" class="w-full sm:w-auto px-7 py-3.5 rounded-lg bg-brand-600 text-white font-semibold text-base hover:bg-brand-700 shadow-md shadow-brand-500/20 transition">
+          Map my process — free call
+        </a>
+        <a href="#how-it-works" class="w-full sm:w-auto px-7 py-3.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-semibold text-base hover:bg-slate-50 transition">
+          See how it works
+        </a>
+      </div>
+
+      <p class="mt-4 text-xs sm:text-sm text-slate-500">
+        Free 45-minute discovery &nbsp;·&nbsp; You keep the process map &nbsp;·&nbsp; If the ROI isn't there, we'll tell you
+      </p>
+
+      <!-- Value Props Ticker -->
+      <div class="mt-14 pt-8 border-t border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+        <div class="text-sm font-semibold text-slate-600">⚡ Fewer manual tasks</div>
+        <div class="text-sm font-semibold text-slate-600">🚀 Faster responses</div>
+        <div class="text-sm font-semibold text-slate-600">🎯 Fewer mistakes</div>
+        <div class="text-sm font-semibold text-slate-600">📉 Lower operating cost</div>
+      </div>
+    </section>
+
+    <!-- Workflow Diagram Section -->
+    <section class="max-w-6xl mx-auto px-6 py-12">
+      <div class="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 shadow-sm">
+        <p class="text-xs font-bold tracking-wider text-slate-400 uppercase text-center mb-8">
+          Live Example — Lead Response Workflow
+        </p>
+
+        <div class="flex flex-col md:flex-row items-center justify-between gap-6 text-center text-sm">
+          <div class="space-y-2">
+            <span class="inline-block bg-slate-100 text-slate-800 px-3 py-1.5 rounded-md font-semibold text-xs">Website form / WhatsApp / Email</span>
+            <p class="text-slate-500 text-xs">Customer enquiry arrives</p>
+          </div>
+          <span class="text-slate-300 font-bold hidden md:inline">→</span>
+          <div class="bg-brand-50 border border-brand-200 text-brand-900 px-4 py-3 rounded-lg font-medium text-xs">
+            <strong>AI Qualifier</strong> reads · scores · routes
+          </div>
+          <span class="text-slate-300 font-bold hidden md:inline">→</span>
+          <div class="space-y-2">
+            <span class="inline-block bg-emerald-50 text-emerald-700 px-3 py-1 rounded font-semibold text-xs">High intent</span>
+            <p class="text-slate-500 text-xs">CRM updated & rep called</p>
+          </div>
+          <span class="text-slate-300 font-bold hidden md:inline">or</span>
+          <div class="space-y-2">
+            <span class="inline-block bg-amber-50 text-amber-700 px-3 py-1 rounded font-semibold text-xs">Needs nurturing</span>
+            <p class="text-slate-500 text-xs">Scheduled follow-up sequence</p>
+          </div>
+        </div>
+
+        <p class="mt-8 text-center text-xs text-slate-500 italic">
+          Every automated action starts behind an <strong>approval gate</strong> — autonomy is earned with a track record of clean runs.
+        </p>
+      </div>
+    </section>
+
+    <!-- Integrations Bar -->
+    <section class="max-w-6xl mx-auto px-6 py-8 text-center">
+      <p class="text-xs font-bold tracking-wider text-slate-400 uppercase mb-4">Works with the tools you already use</p>
+      <div class="flex flex-wrap justify-center items-center gap-6 text-slate-600 font-medium text-sm">
+        <span>WhatsApp Business</span>
+        <span>Gmail</span>
+        <span>Outlook</span>
+        <span>HubSpot</span>
+        <span>Zoho</span>
+        <span>Pipedrive</span>
+        <span>Google Sheets</span>
+        <span>Google Calendar</span>
+        <span>Slack</span>
+        <span>Stripe</span>
+        <span>Notion</span>
+      </div>
+    </section>
+
+    <!-- Before / After Grid -->
+    <section class="max-w-7xl mx-auto px-6 py-16">
+      <div class="text-center mb-12">
+        <h2 class="text-3xl font-extrabold text-slate-900">What changes on day one</h2>
+        <p class="text-slate-600 mt-2">Same business, same leads. The difference is what happens in the first five minutes.</p>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-8">
+        <div class="bg-white border border-rose-100 rounded-xl p-8 shadow-sm">
+          <h3 class="text-lg font-bold text-rose-600 mb-6 flex items-center gap-2">
+            <span>✕</span> Today · Manual
+          </h3>
+          <ul class="space-y-4 text-sm text-slate-600">
+            <li>• Enquiries sit unanswered overnight, on weekends, or during lunch.</li>
+            <li>• Someone re-types WhatsApp details into a spreadsheet or CRM.</li>
+            <li>• Follow-ups depend on memory, so they rarely happen.</li>
+            <li>• Hot and cold leads receive identical delayed treatment.</li>
+            <li>• Nobody knows which channel or representative converted the sale.</li>
+          </ul>
+        </div>
+
+        <div class="bg-white border border-emerald-100 rounded-xl p-8 shadow-sm">
+          <h3 class="text-lg font-bold text-emerald-600 mb-6 flex items-center gap-2">
+            <span>✓</span> With Processly · Automated
+          </h3>
+          <ul class="space-y-4 text-sm text-slate-600">
+            <li>• Enquiries detected instantly across every channel, 24/7.</li>
+            <li>• Personalized first reply sent in under two minutes.</li>
+            <li>• AI reads, scores, and routes high-intent leads to reps in real time.</li>
+            <li>• CRM updated automatically without re-typing.</li>
+            <li>• Systematic follow-ups continue until the lead books or converts.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Stats Bar -->
+      <div class="mt-12 bg-white border border-slate-200 rounded-xl p-8 grid grid-cols-2 md:grid-cols-4 gap-6 text-center shadow-sm">
+        <div>
+          <div class="text-3xl font-extrabold text-brand-600">&lt; 2 min</div>
+          <div class="text-xs text-slate-500 mt-1 uppercase font-semibold">Median First Response</div>
+        </div>
+        <div>
+          <div class="text-3xl font-extrabold text-slate-900">24 / 7</div>
+          <div class="text-xs text-slate-500 mt-1 uppercase font-semibold">Weekends & Holidays</div>
+        </div>
+        <div>
+          <div class="text-3xl font-extrabold text-brand-600">100%</div>
+          <div class="text-xs text-slate-500 mt-1 uppercase font-semibold">Enquiries Logged</div>
+        </div>
+        <div>
+          <div class="text-3xl font-extrabold text-slate-900">0</div>
+          <div class="text-xs text-slate-500 mt-1 uppercase font-semibold">Forgotten Follow-ups</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works (5 Steps) -->
+    <section id="how-it-works" class="max-w-7xl mx-auto px-6 py-16">
+      <div class="text-center mb-16">
+        <h2 class="text-3xl font-extrabold text-slate-900">Five steps. You approve every one.</h2>
+        <p class="text-slate-600 mt-2">No black boxes. You review the map, prototype, and pricing before we build.</p>
+      </div>
+
+      <div class="grid md:grid-cols-5 gap-6">
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <span class="text-2xl font-black text-brand-600">01</span>
+            <h3 class="font-bold text-slate-900 mt-3">Discovery</h3>
+            <p class="text-xs text-slate-500 font-semibold mb-2">45 minutes</p>
+            <p class="text-xs text-slate-600 leading-relaxed">Map your workflow, bottlenecks, and where leads get stuck. No jargon required.</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <span class="text-2xl font-black text-brand-600">02</span>
+            <h3 class="font-bold text-slate-900 mt-3">Process Map & ROI</h3>
+            <p class="text-xs text-slate-500 font-semibold mb-2">Within a week</p>
+            <p class="text-xs text-slate-600 leading-relaxed">Visual map ranking tasks by effort vs. impact. Steps that shouldn't automate stay marked "keep human."</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <span class="text-2xl font-black text-brand-600">03</span>
+            <h3 class="font-bold text-slate-900 mt-3">Visual Prototype</h3>
+            <p class="text-xs text-slate-500 font-semibold mb-2">You approve it</p>
+            <p class="text-xs text-slate-600 leading-relaxed">Detailed workflow diagram showing AI logic and approval checkpoints prior to coding.</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <span class="text-2xl font-black text-brand-600">04</span>
+            <h3 class="font-bold text-slate-900 mt-3">Review Mode</h3>
+            <p class="text-xs text-slate-500 font-semibold mb-2">Weeks 1–2</p>
+            <p class="text-xs text-slate-600 leading-relaxed">The system proposes actions while your team reviews and approves them before full autonomy.</p>
+          </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <span class="text-2xl font-black text-brand-600">05</span>
+            <h3 class="font-bold text-slate-900 mt-3">Monitor & Improve</h3>
+            <p class="text-xs text-slate-500 font-semibold mb-2">Ongoing</p>
+            <p class="text-xs text-slate-600 leading-relaxed">Continuous production monitoring, error resolution, and monthly workflow optimization.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TEMPLATES + LIVE DEMO ============ -->
+    <section id="templates" class="bg-white border-y border-slate-200 py-20 scroll-mt-20">
+      <div class="max-w-7xl mx-auto px-6">
+        <div class="text-center mb-12 max-w-3xl mx-auto">
+          <span class="inline-block py-1 px-3 rounded-full bg-brand-50 text-brand-700 text-xs font-semibold tracking-wider uppercase mb-4">Template library</span>
+          <h2 class="text-3xl font-extrabold text-slate-900">Real problems, ready to run</h2>
+          <p class="text-slate-600 mt-3 leading-relaxed">These eight cover most of what SMEs ask us for — each one started as a real problem from a real business. Pick one and watch a full run: what your customer sees on the left, what the engine did on the right.</p>
+        </div>
+
+        <div class="tpl-grid" id="tpl-grid"><!-- cards rendered by script --></div>
+
+        <div class="runner" id="runner">
+          <div class="runner-head">
+            <div>
+              <span class="ind-tag" id="r-industry"></span>
+              <h3 id="r-name"></h3>
+              <p id="r-problem"></p>
+            </div>
+            <div class="runner-actions">
+              <button type="button" class="btn btn-primary pulse" id="r-run">▶ Run demo</button>
+              <button type="button" class="btn btn-ghost" id="r-replay" hidden>↻ Replay</button>
+            </div>
+          </div>
+
+          <div class="run-chips" id="r-chips"></div>
+
+          <div class="runner-cols">
+            <div>
+              <p class="col-label">What the customer sees</p>
+              <div class="bubble in">
+                <span class="bubble-meta" id="r-in-meta"></span>
+                <p id="r-in-text"></p>
+              </div>
+              <div class="bubble out" id="r-artifact" hidden>
+                <span class="bubble-meta" id="r-art-meta"></span>
+                <p id="r-art-text"></p>
+              </div>
+              <div class="run-outcome" id="r-outcome" hidden></div>
+            </div>
+            <div>
+              <p class="col-label">What the engine did</p>
+              <ol class="runlog" id="r-log" aria-live="polite"></ol>
+              <p class="runlog-note">Simulated replay — production runs are logged line-for-line, exactly like this.</p>
+            </div>
+          </div>
+
+          <details class="yaml-box">
+            <summary>Workflow configuration<span class="yaml-hint">— data, not code (~25 lines of YAML per template)</span></summary>
+            <pre><code id="r-yaml"></code></pre>
+          </details>
+        </div>
+
+        <p class="text-center text-sm text-slate-500 mt-10">Don't see your problem here? These are the ones we keep re-building — <strong class="text-slate-800">the audit finds your version.</strong></p>
+      </div>
+    </section>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="max-w-7xl mx-auto px-6 py-16">
+      <div class="text-center mb-14">
+        <h2 class="text-3xl font-extrabold text-slate-900">Start small. Pay for outcomes.</h2>
+        <p class="text-slate-600 mt-2">Every engagement begins with an audit to verify your ROI first.</p>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-8">
+        <!-- Card 1 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Process Audit</h3>
+            <p class="text-xs text-slate-500 mt-1">Know exactly what's worth automating</p>
+            <div class="mt-6 text-3xl font-extrabold text-slate-900">$490 <span class="text-xs font-normal text-slate-500">one-time</span></div>
+            <ul class="mt-6 space-y-3 text-xs text-slate-600">
+              <li>✓ 45-minute discovery workshop</li>
+              <li>✓ Visual workflow process map</li>
+              <li>✓ ROI estimate & effort ranking</li>
+              <li>✓ Prototype for workflow #1</li>
+              <li class="font-semibold text-brand-600">✓ Credited in full against a Sprint</li>
+            </ul>
+          </div>
+          <a href="#contact" class="mt-8 block text-center py-2.5 px-4 rounded-lg border border-slate-300 font-semibold text-sm hover:bg-slate-50 transition">Start with audit</a>
+        </div>
+
+        <!-- Card 2 (Featured) -->
+        <div class="bg-white rounded-2xl border-2 border-brand-600 p-8 shadow-lg relative flex flex-col justify-between">
+          <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-[11px] font-bold uppercase tracking-wider px-3 py-1 rounded-full">Most Popular</span>
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Automation Sprint</h3>
+            <p class="text-xs text-slate-500 mt-1">From prototype to production</p>
+            <div class="mt-6 text-3xl font-extrabold text-slate-900">From $1,500 <span class="text-xs font-normal text-slate-500">fixed</span></div>
+            <ul class="mt-6 space-y-3 text-xs text-slate-600">
+              <li>✓ Complete workflow build & deployment</li>
+              <li>✓ Review-mode launch with team</li>
+              <li>✓ Tool integrations (CRM, WhatsApp, Mail)</li>
+              <li>✓ Team walkthrough & handover docs</li>
+              <li>✓ 30 days post-launch support</li>
+            </ul>
+          </div>
+          <a href="#contact" class="mt-8 block text-center py-2.5 px-4 rounded-lg bg-brand-600 text-white font-semibold text-sm hover:bg-brand-700 shadow transition">Scope my sprint</a>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-8 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Run & Improve</h3>
+            <p class="text-xs text-slate-500 mt-1">Maintenance & evolution</p>
+            <div class="mt-6 text-3xl font-extrabold text-slate-900">From $290 <span class="text-xs font-normal text-slate-500">/ month</span></div>
+            <ul class="mt-6 space-y-3 text-xs text-slate-600">
+              <li>✓ 24/7 workflow monitoring</li>
+              <li>✓ API breakage fixes included</li>
+              <li>✓ Monthly optimization reports</li>
+              <li>✓ Priority WhatsApp & email support</li>
+              <li>✓ Cancel anytime</li>
+            </ul>
+          </div>
+          <a href="#contact" class="mt-8 block text-center py-2.5 px-4 rounded-lg border border-slate-300 font-semibold text-sm hover:bg-slate-50 transition">Add to sprint</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Contact & Discovery Form -->
+    <section id="contact" class="max-w-4xl mx-auto px-6 py-16">
+      <div class="bg-white border border-slate-200 rounded-2xl p-8 sm:p-12 shadow-sm">
+        <div class="text-center mb-10">
+          <h2 class="text-3xl font-extrabold text-slate-900">Book your discovery call</h2>
+          <p class="text-slate-600 text-sm mt-2">Tell us what's eating your team's time. A human reads this — no automated pitch spam.</p>
+        </div>
+
+        <form class="space-y-5" onsubmit="event.preventDefault(); alert('Request submitted!');">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">Name *</label>
+            <input type="text" required placeholder="Your name" class="w-full px-4 py-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">Company *</label>
+              <input type="text" required placeholder="Your business" class="w-full px-4 py-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">Email *</label>
+              <input type="email" required placeholder="you@company.com" class="w-full px-4 py-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-2">What's eating your team's time? *</label>
+            <textarea required rows="4" placeholder="e.g. We get 40+ WhatsApp enquiries a day and answer them by hand..." class="w-full px-4 py-3 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"></textarea>
+          </div>
+
+          <button type="submit" class="w-full py-3.5 rounded-lg bg-brand-600 text-white font-semibold text-base hover:bg-brand-700 shadow-md transition">
+            Book my discovery call
+          </button>
+          <p class="text-center text-xs text-slate-500 mt-3">We reply within one business day. Prefer email? <a href="mailto:hello@processly.example" class="underline text-brand-600">hello@processly.example</a></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-dark-900 text-slate-400 py-16 border-t border-slate-800">
+    <div class="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-10">
+      <div class="md:col-span-2">
+        <div class="flex items-center gap-3 text-white font-bold text-xl mb-4">
+          <span class="w-3 h-3 rounded-full bg-brand-500"></span>
+          <span>Processly</span>
+        </div>
+        <p class="text-sm text-slate-400 max-w-sm leading-relaxed">
+          Process-first automation. We map how your business works, then automate what actually pays — with human approval and 24/7 monitoring.
+        </p>
+      </div>
+
+      <div>
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-200 mb-4">Explore</h4>
+        <ul class="space-y-2 text-sm">
+          <li><a href="#how-it-works" class="hover:text-white transition">How it works</a></li>
+          <li><a href="#what-we-automate" class="hover:text-white transition">What we automate</a></li>
+          <li><a href="#industries" class="hover:text-white transition">Industries</a></li>
+          <li><a href="#templates" class="hover:text-white transition">Templates</a></li>
+          <li><a href="#pricing" class="hover:text-white transition">Pricing</a></li>
+          <li><a href="#faq" class="hover:text-white transition">FAQ</a></li>
+        </ul>
+      </div>
+
+      <div>
+        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-200 mb-4">Contact</h4>
+        <ul class="space-y-2 text-sm">
+          <li><a href="mailto:hello@processly.example" class="hover:text-white transition">hello@processly.example</a></li>
+          <li><a href="#contact" class="hover:text-white transition">WhatsApp</a></li>
+          <li><a href="#contact" class="hover:text-white transition">Book a discovery call</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="max-w-7xl mx-auto px-6 pt-12 mt-12 border-t border-slate-800 text-xs flex flex-col sm:flex-row items-center justify-between text-slate-500 gap-4">
+      <p>© 2026 Processly. All rights reserved.</p>
+      <div class="flex gap-4">
+        <a href="#" class="hover:text-slate-400 transition">Privacy</a>
+        <span>·</span>
+        <a href="#" class="hover:text-slate-400 transition">Terms</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+  /* ============ TEMPLATE LIBRARY + DEMO RUNNER ============ */
+  (function () {
+    const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const STEP_MS = RM ? 0 : 800;
+
+    const TEMPLATES = [
+      {
+        id: 'lead', industry: 'Real estate', name: 'The 11pm Lead',
+        problem: 'Portal and WhatsApp leads arrive at all hours. A reply within 5 minutes is ~21× more likely to convert than one after 30 — but your team replies at 9am.',
+        result: 'First reply in 6 seconds, any hour.',
+        steps: ['Trigger', 'Extract', 'Qualify', 'Decide', 'CRM', 'Reply', 'Follow-up'],
+        incoming: { meta: 'WhatsApp · 23:47', text: 'Hi! Is the 2BHK in Marina Tower still available? Budget around 130k/yr, looking to move next month. — Sara' },
+        artifact: { meta: 'Reply sent · 23:47:06 — six seconds later', text: 'Hi Sara! Yes — the 2BHK in Marina Tower is available 😊 1,100 sqft, sea-facing, 130k/yr. I have viewing slots tomorrow at 10:00 or 16:00 — which suits you better? — Rana, Skyline Properties' },
+        outcome: '<b>First reply: 6 seconds.</b> Viewing booked at 08:02 the next morning — six hours before the portal\'s next-fastest agent even opened WhatsApp.',
+        log: [
+          { t: '23:47:01', s: 'Trigger',   d: 'WhatsApp message received · wa_9f2c', chip: 0 },
+          { t: '23:47:02', s: 'Extract',   d: 'intent: viewing · budget: 130k/yr · area: Marina · timeline: 30 days', chip: 1 },
+          { t: '23:47:04', s: 'Qualify',   d: 'score 0.87 — HOT · budget + timeline + exact unit match', chip: 2 },
+          { t: '23:47:04', s: 'Decide',    d: 'score > 0.7 → route to Marina specialist agent', chip: 3 },
+          { t: '23:47:05', s: 'CRM',       d: 'lead #4821 created · dedup-matched to portal enquiry', chip: 4 },
+          { t: '23:47:06', s: 'Reply',     d: 'personalised WhatsApp sent via Business API', chip: 5, artifact: true },
+          { t: '23:47:07', s: 'Follow-up', d: 'if no viewing within 24h → send viewing_nudge_v2', chip: 6 }
+        ],
+        yaml: `workflow: speed-to-lead-realestate
+version: 7
+mode: auto            # promoted after 42 clean review-mode runs
+trigger:
+  type: whatsapp.inbound
+  idempotency_key: message_id
+steps:
+  - id: extract
+    type: ai.extract
+    fields: [intent, budget, area, timeline]
+  - id: qualify
+    type: ai.score
+    rules: lead-scoring-v3.md
+    output: lead_score
+  - id: route
+    type: decide.branch
+    when: lead_score > 0.7
+    then: [crm.create, agent.notify, whatsapp.reply, followup.schedule]
+    else: [crm.create, nurture.enroll]
+  - id: viewing_nudge
+    type: schedule.delay
+    if_no_viewing_in: 24h
+    then: whatsapp.template viewing_nudge_v2`
+      },
+      {
+        id: 'noshow', industry: 'Clinics', name: 'The No-Show Killer',
+        problem: 'One in four patients doesn\'t show up. The waitlist that could fill those chairs lives in somebody\'s head.',
+        result: 'Empty slot refilled in 39 minutes, hands-free.',
+        steps: ['Trigger', 'Release', 'Offer waitlist', 'Confirm', 'Update'],
+        incoming: { meta: 'WhatsApp · Thu 09:12', text: 'So sorry, can\'t make Thursday 4pm, something came up at work 😔 — Laila' },
+        artifact: { meta: 'WhatsApp to next-in-line · 39 minutes later', text: 'Hi Omar! A slot just opened Thursday 16:00 with Dr. Lena — you\'re first on the waitlist. Shall I book you in? Reply YES and it\'s yours 🙌' },
+        outcome: '<b>Chair refilled in 39 minutes.</b> No-show cost: zero. Front-desk minutes spent: zero.',
+        log: [
+          { t: 'Thu 09:12', s: 'Trigger',  d: 'cancellation received · appt #A1042 (Thu 16:00, Dr. Lena)', chip: 0 },
+          { t: '09:12',     s: 'Release',  d: 'slot Thu 16:00 opened · calendar + front desk synced', chip: 1 },
+          { t: '09:13',     s: 'Offer',    d: 'waitlist matched 3 patients (physio follow-up) · offers sent', chip: 2 },
+          { t: '09:51',     s: 'Confirm',  d: 'Omar accepted → new appointment #A1055 booked', chip: 3, artifact: true },
+          { t: '09:51',     s: 'Update',   d: '2 unused offers released · reminders scheduled for Omar', chip: 4 }
+        ],
+        yaml: `workflow: appointment-refill
+version: 4
+mode: auto
+triggers:
+  - type: schedule.reminder
+    offsets: [48h, 24h, 3h]
+  - type: whatsapp.inbound
+    match: [cancel, reschedule]
+steps:
+  - id: release
+    type: calendar.release
+    notify: [frontdesk]
+  - id: offer
+    type: waitlist.pop
+    match: [service_type, proximity]
+    limit: 3
+    timeout: 2h
+  - id: confirm
+    type: whatsapp.confirm
+    expect: yes_no
+  - id: book
+    type: [calendar.book, reminder.schedule]`
+      },
+      {
+        id: 'chaser', industry: 'Any B2B / services', name: 'The Polite Chaser',
+        problem: 'You hate chasing invoices — so they get chased late, once, apologetically. Cash flow pays the price.',
+        result: 'Paid on day 8. Zero awkward calls.',
+        steps: ['Trigger', 'Decide', 'Send', 'Escalate', 'Reconcile'],
+        incoming: { meta: 'Overdue check · daily 09:00', text: 'Invoice #1042 — $3,480 — due 1 Oct · now 3 days overdue (to: Daniel C.)' },
+        artifact: { meta: 'WhatsApp nudge · day 7', text: 'Hi Daniel — floating invoice #1042 ($3,480, due 1 Oct) to the top of your inbox. No stress if it\'s already scheduled — just making sure it didn\'t get buried. Anything unclear, happy to walk through it. — Priya' },
+        outcome: '<b>Paid on day 8, zero awkward calls.</b> The tone ladder does the chasing, so your team never has to.',
+        log: [
+          { t: 'Oct 4 09:00', s: 'Trigger',    d: 'daily overdue check · 1 invoice matched: #1042 (+3d)', chip: 0 },
+          { t: '09:00',       s: 'Decide',     d: 'first miss, amount < $5k → tone: gentle, channel: email', chip: 1 },
+          { t: '09:01',       s: 'Send',       d: 'nudge #1 — friendly email, invoice attached', chip: 2 },
+          { t: 'Oct 8 09:00', s: 'Escalate',   d: 'still unpaid (+7d) → WhatsApp, friendly-but-clear', chip: 3, artifact: true },
+          { t: 'Oct 12 10:22', s: 'Reconcile', d: 'payment received ✓ marked paid · thank-you sent', chip: 4 }
+        ],
+        yaml: `workflow: invoice-chaser
+version: 5
+mode: auto
+trigger:
+  type: schedule.check
+  daily_at: 09:00
+  source: invoices.overdue
+steps:
+  - id: tone
+    type: decide.switch
+    on: days_overdue
+    1_7:   { channel: email,    tone: gentle }
+    8_13:  { channel: whatsapp, tone: friendly }
+    14_30: { channel: email,    tone: firm, cc: accounts }
+  - id: send
+    type: msg.send
+    attach: [invoice, statement]
+  - id: reconcile
+    type: payments.watch
+    on_paid: [mark_paid, thanks.send]`
+      },
+      {
+        id: 'quote', industry: 'Contractors / trades', name: 'The Quote Follow-Up Machine',
+        problem: 'You send the quote, then… nothing. The job usually goes to whoever follows up — and following up feels like begging.',
+        result: 'Four-touch cadence. Job booked day 7.',
+        steps: ['Trigger', 'Cadence', 'Follow-up', 'Detect reply', 'Close'],
+        incoming: { meta: 'System event · Mon 10:14', text: 'Quote #Q-218 sent to Marcus — $4,200, bathroom refit · response tracking: on' },
+        artifact: { meta: 'Email · day 2', text: 'Hi Marcus — following up on your bathroom refit quote ($4,200). We just wrapped a near-identical job on Elm St; photos attached if you\'d like a look. Any questions, or shall I pencil you in for a start date? — Sam, Riverview Bathrooms' },
+        outcome: '<b>Job booked on day 7</b> — with the four touches nobody ever gets around to making.',
+        log: [
+          { t: 'Mon 10:14', s: 'Trigger',    d: 'quote #Q-218 delivered ($4,200 · bathroom refit)', chip: 0 },
+          { t: 'Mon 10:14', s: 'Cadence',    d: 'sequence armed: day 2 value · day 4 FAQ · day 7 expiry', chip: 1 },
+          { t: 'Wed 10:15', s: 'Follow-up',  d: 'touch #1 sent — recap + Elm St. job photos', chip: 2, artifact: true },
+          { t: 'Fri 10:15', s: 'Follow-up',  d: 'touch #2 sent — objection FAQ + finance options', chip: 2 },
+          { t: 'Mon 14:32', s: 'Detect reply', d: 'reply received → classified: go_ahead (0.94)', chip: 3 },
+          { t: '14:33',     s: 'Close',      d: 'job created · deposit invoice sent · start date held', chip: 4 }
+        ],
+        yaml: `workflow: quote-followup
+version: 3
+mode: auto
+trigger:
+  type: quote.delivered
+steps:
+  - id: cadence
+    type: schedule.sequence
+    day_2:  email.value     # recap + proof
+    day_4:  email.faq       # objections answered
+    day_7:  email.expiry    # quote validity
+    day_14: email.breakup   # polite close
+  - id: classify
+    type: ai.classify
+    intents: [go_ahead, questions, not_now]
+  - id: close
+    type: decide.branch
+    when: intent == go_ahead
+    then: [job.create, invoice.deposit, calendar.hold]`
+      },
+      {
+        id: 'admissions', industry: 'Education / coaching', name: 'Admissions Overflow',
+        problem: 'Admissions season means 100+ enquiries a day. Counsellors drown in triage and leads go cold over the weekend.',
+        result: 'Enquiry → matched → booked in 2 minutes.',
+        steps: ['Trigger', 'Match', 'Assign', 'Send', 'Book'],
+        incoming: { meta: 'Website form · 18:32', text: 'Hi — interested in the Data Analytics course. I work in banking, can only study evenings. — Ahmed' },
+        artifact: { meta: 'Email · 38 seconds later', text: 'Hi Ahmed — great fit: our Data Analytics evening track was built for banking professionals (92% of modules run after 6pm). Brochure attached. If you\'d like a 20-minute chat, Nadia — our finance-careers counsellor — has Tuesday 18:30 open: [book].' },
+        outcome: '<b>Answered in 2 minutes at 6:32pm.</b> Met the counsellor Tuesday. Enrolled Friday.',
+        log: [
+          { t: '18:32:41', s: 'Trigger', d: 'form enquiry received · form_7731', chip: 0 },
+          { t: '18:33:02', s: 'Match',   d: 'Data Analytics (evening) 92% · AI for Finance 87%', chip: 1 },
+          { t: '18:33:03', s: 'Assign',  d: 'counsellor: Nadia — lowest load, banking background', chip: 2 },
+          { t: '18:33:05', s: 'Send',    d: 'brochure + evening schedule + booking link', chip: 3, artifact: true },
+          { t: '19:10:22', s: 'Book',    d: 'consult booked Tue 18:30 · reminders armed', chip: 4 }
+        ],
+        yaml: `workflow: admissions-overflow
+version: 6
+mode: auto
+trigger:
+  type: form.submit        # same flow: whatsapp, walk-in sheet
+  idempotency_key: form_id + email
+steps:
+  - id: match
+    type: ai.match
+    catalog: programs.yaml
+    weights: [schedule_fit, background, budget]
+    top_k: 2
+  - id: assign
+    type: route.least_loaded
+    skills: industry_background
+  - id: outreach
+    type: email.send
+    attach: program.brochure
+    include: booking_link
+  - id: remind
+    type: schedule.reminder
+    offsets: [24h_before, 1h_before]`
+      },
+      {
+        id: 'report', industry: 'Any business', name: 'The Monday Report',
+        problem: 'Every Monday, someone burns two hours copy-pasting from five tabs into a report nobody enjoys making.',
+        result: 'Report lands before anyone arrives.',
+        steps: ['Schedule', 'Collect', 'Aggregate', 'Summarize', 'Deliver'],
+        incoming: { meta: 'Schedule · every Monday 08:00', text: 'Weekly business report — sources: CRM, enrolments sheet, WhatsApp, ad spend.' },
+        artifact: { meta: 'Email · 08:00, before anyone arrives', text: 'Weekly recap — Oct 7. 38 new leads (+12%), 12 enrolments. WhatsApp is still your best channel at $31/lead vs $67 from ads — consider shifting budget. ⚠ Flag: 5 leads from Thursday\'s campaign had invalid numbers; recommend pausing that ad set. Full breakdown attached.' },
+        outcome: '<b>Two hours reclaimed, every week.</b> The report nobody had time to make, made before coffee.',
+        log: [
+          { t: '08:00:00', s: 'Schedule',  d: 'weekly report triggered (cron: 0 8 * * MON)', chip: 0 },
+          { t: '08:00:04', s: 'Collect',   d: '38 leads (CRM) · 12 enrolments (Sheets) · 214 chats (WhatsApp) · $1,840 (ads)', chip: 1 },
+          { t: '08:00:07', s: 'Aggregate', d: 'cost/lead $48.40 · conversion 31.6% · top channel: WhatsApp ($31/lead)', chip: 2 },
+          { t: '08:00:11', s: 'Summarize', d: 'AI drafted exec summary + 3 flags', chip: 3, artifact: true },
+          { t: '08:00:12', s: 'Deliver',   d: 'PDF emailed to owner, sales, marketing', chip: 4 }
+        ],
+        yaml: `workflow: weekly-report
+version: 9
+mode: auto
+trigger:
+  type: schedule.cron
+  expr: "0 8 * * MON"
+steps:
+  - id: collect
+    type: data.pull
+    sources: [crm.leads, sheets.enrolments, whatsapp.stats, ads.spend]
+  - id: aggregate
+    type: data.transform
+    metrics: [cost_per_lead, conversion_rate, channel_rank]
+  - id: summarize
+    type: ai.summarize
+    style: executive
+    flags: [anomalies, underperformers]
+  - id: deliver
+    type: email.pdf
+    to: [owner, sales, marketing]`
+      },
+      {
+        id: 'churn', industry: 'Memberships / subscriptions', name: 'The Silent Churn Rescuer',
+        problem: 'Failed card payments quietly end memberships. By the time anyone notices, the member is long gone.',
+        result: '68% recovered within 72 hours.',
+        steps: ['Trigger', 'Retry', 'Notify', 'Offer', 'Recover'],
+        incoming: { meta: 'System event · 03:12', text: 'Payment failed — member #M-214 (Sarah K.) — card ending 4471 expired.' },
+        artifact: { meta: 'WhatsApp · morning after', text: 'Hi Sarah — your card ending 4471 expired, so this month\'s payment didn\'t go through. No stress: update it here [secure link] and everything continues as normal. Rather pause a month? Just reply PAUSE — your streak stays.' },
+        outcome: '<b>68% of failed payments recovered within 72 hours</b> — without a single awkward call.',
+        log: [
+          { t: '03:12',        s: 'Trigger', d: 'payment declined · reason: card_expired', chip: 0 },
+          { t: '03:12',        s: 'Retry',   d: 'smart retry #1 → declined · next attempt scheduled', chip: 1 },
+          { t: '08:30',        s: 'Notify',  d: 'WhatsApp + email with secure card-update link', chip: 2, artifact: true },
+          { t: '+48h',         s: 'Offer',   d: 'no update → win-back offered: pause 1 month, keep streak', chip: 3 },
+          { t: 'Day 4 · 09:41', s: 'Recover', d: 'card updated ✓ payment retried ✓ membership active', chip: 4 }
+        ],
+        yaml: `workflow: failed-payment-rescue
+version: 4
+mode: auto
+trigger:
+  type: payment.failed
+steps:
+  - id: retry
+    type: payment.retry
+    ladder: [immediate, 24h, 3d]
+  - id: notify
+    type: whatsapp.send
+    template: card_update_link
+    fallback: email
+  - id: save
+    type: decide.branch
+    when: no_update_after 48h
+    then: offer.pause_one_month
+  - id: recover
+    type: payment.watch
+    on_success: membership.reactivate`
+      },
+      {
+        id: 'reviews', industry: 'Local services', name: 'The Review Harvester',
+        problem: 'Happy customers mean to leave a review and never do. Unhappy ones find Google within the hour.',
+        result: '38 reviews in a quarter. The 2★ never went public.',
+        steps: ['Trigger', 'Ask', 'Branch', 'Route', 'Respond'],
+        incoming: { meta: 'System event · Tue 10:00', text: 'Job #771 (AC service, Fatima R.) marked complete — 24h ago.' },
+        artifact: { meta: 'WhatsApp · 24h after the job', text: 'Hi Fatima — hope the AC is running ice-cold 😎 If the service hit the mark, a quick Google review genuinely helps a small team like ours: [one-tap link]. If anything fell short, reply here and we\'ll fix it first.' },
+        outcome: '<b>38 reviews in one quarter</b> — and the 2★ never reached Google. It reached the manager\'s phone in 40 seconds, with a drafted reply awaiting approval.',
+        log: [
+          { t: 'Tue 10:00', s: 'Trigger',  d: 'job #771 complete +24h → review window open', chip: 0 },
+          { t: '10:00',     s: 'Ask',      d: 'review request sent (WhatsApp, one-tap link)', chip: 1, artifact: true },
+          { t: 'Wed 09:15', s: 'Branch',   d: 'rating 5★ received on Google ✓', chip: 2 },
+          { t: '09:15',     s: 'Route',    d: 'thank-you + referral code sent automatically', chip: 3 },
+          { t: 'Thu 16:40', s: 'Respond',  d: 'another job rated 2★ → intercepted · manager alerted · recovery reply drafted for approval', chip: 4 }
+        ],
+        yaml: `workflow: review-harvester
+version: 5
+mode: auto            # the ask is automatic; replies stay gated
+trigger:
+  type: job.completed
+  delay: 24h
+steps:
+  - id: ask
+    type: whatsapp.send
+    template: review_request_v3
+    link: google.one_tap
+  - id: branch
+    type: decide.switch
+    on: rating
+    4_5: [thanks.send, referral.code]
+    1_3: [intercept, manager.alert]
+  - id: draft_reply
+    type: ai.generate
+    mode: review          # a human approves before sending`
+      }
+    ];
+
+    const el = {
+      grid: document.getElementById('tpl-grid'),
+      industry: document.getElementById('r-industry'),
+      name: document.getElementById('r-name'),
+      problem: document.getElementById('r-problem'),
+      chips: document.getElementById('r-chips'),
+      inMeta: document.getElementById('r-in-meta'),
+      inText: document.getElementById('r-in-text'),
+      art: document.getElementById('r-artifact'),
+      artMeta: document.getElementById('r-art-meta'),
+      artText: document.getElementById('r-art-text'),
+      outcome: document.getElementById('r-outcome'),
+      log: document.getElementById('r-log'),
+      yaml: document.getElementById('r-yaml'),
+      run: document.getElementById('r-run'),
+      replay: document.getElementById('r-replay'),
+      runner: document.getElementById('runner')
+    };
+
+    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const hl = y => esc(y)
+      .replace(/^( *)(- )?([\w.-]+):/gm, (m, a, b, k) => a + (b || '') + '<span class="yk">' + k + '</span>:')
+      .replace(/(#[^\n]*)/g, '<span class="yc">$1</span>');
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const byId = id => TEMPLATES.find(t => t.id === id);
+
+    let current = null, runToken = 0;
+
+    el.grid.innerHTML = TEMPLATES.map(t => `
+      <article class="tpl-card" data-tpl="${t.id}">
+        <span class="ind-tag" style="align-self:flex-start">${esc(t.industry)}</span>
+        <h3>${esc(t.name)}</h3>
+        <p>${esc(t.problem)}</p>
+        <p class="tpl-result">${esc(t.result)}</p>
+        <button type="button" class="btn btn-primary btn-sm tpl-run" data-tpl="${t.id}">▶ Run the demo</button>
+      </article>`).join('');
+
+    function load(id) {
+      const t = byId(id); if (!t) return;
+      current = id; runToken++;
+      el.industry.textContent = t.industry;
+      el.name.textContent = t.name;
+      el.problem.textContent = t.problem;
+      el.chips.innerHTML = t.steps.map(s => `<span class="rchip">${esc(s)}</span>`).join('<span class="rsep">→</span>');
+      el.inMeta.textContent = t.incoming.meta;
+      el.inText.textContent = t.incoming.text;
+      el.art.hidden = true; el.outcome.hidden = true; el.replay.hidden = true; el.run.hidden = false;
+      el.log.innerHTML = '<li class="runlog-empty">Press ▶ Run demo to replay a logged run.</li>';
+      el.yaml.innerHTML = hl(t.yaml);
+      document.querySelectorAll('.tpl-card').forEach(c => c.classList.toggle('active', c.dataset.tpl === id));
+    }
+
+    async function run() {
+      const t = byId(current); if (!t) return;
+      const token = ++runToken;
+      el.run.classList.remove('pulse');
+      el.run.hidden = true; el.replay.hidden = true;
+      el.art.hidden = true; el.outcome.hidden = true;
+      el.log.innerHTML = '';
+      const chips = [...el.chips.querySelectorAll('.rchip')];
+      for (const l of t.log) {
+        if (STEP_MS) await sleep(STEP_MS);
+        if (token !== runToken) return;
+        const li = document.createElement('li');
+        li.innerHTML = `<span class="lt">${esc(l.t)}</span><span class="ls">${esc(l.s)}</span><span class="ld">${esc(l.d)}</span><span class="lok">✓</span>`;
+        el.log.appendChild(li);
+        chips.forEach((c, ci) => { c.classList.toggle('done', ci <= l.chip); c.classList.toggle('active', ci === l.chip); });
+        if (l.artifact) {
+          el.artMeta.textContent = t.artifact.meta;
+          el.artText.textContent = t.artifact.text;
+          el.art.hidden = false;
+        }
+      }
+      if (token !== runToken) return;
+      chips.forEach(c => { c.classList.add('done'); c.classList.remove('active'); });
+      el.outcome.innerHTML = t.outcome; el.outcome.hidden = false;
+      el.replay.hidden = false;
+    }
+
+    el.grid.addEventListener('click', e => {
+      const btn = e.target.closest('.tpl-run');
+      if (!btn) return;
+      load(btn.dataset.tpl);
+      el.runner.scrollIntoView({ behavior: RM ? 'auto' : 'smooth', block: 'start' });
+      run();
+    });
+    el.run.addEventListener('click', run);
+    el.replay.addEventListener('click', run);
+
+    load(TEMPLATES[0].id);
+  })();
+  </script>
+
+</body>
+</html>
