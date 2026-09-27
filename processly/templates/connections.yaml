@@ -1,0 +1,26 @@
+# HTTP systems workflows can call (integration.call, data.enrich).
+# Secrets come from environment variables via ${NAME}; they never appear in
+# workflow expressions or run logs. A connection whose variables aren't set
+# stays unusable (steps using it fail with a clear message) until they are.
+stripe:
+  base_url: https://api.stripe.com/v1
+  headers: { Authorization: "Bearer ${STRIPE_SECRET_KEY}" }
+  body_format: form
+accounting:
+  base_url: ${ACCOUNTING_API_URL}
+  headers: { Authorization: "Bearer ${ACCOUNTING_API_TOKEN}" }
+clinic:
+  base_url: ${CLINIC_API_URL}
+  headers: { Authorization: "Bearer ${CLINIC_API_TOKEN}" }
+carrier:
+  base_url: ${CARRIER_API_URL}
+  headers: { Authorization: "Bearer ${CARRIER_API_TOKEN}" }
+quote_engine:
+  base_url: ${QUOTE_ENGINE_URL}
+  headers: { Authorization: "Bearer ${QUOTE_ENGINE_TOKEN}" }
+pms:
+  base_url: ${PMS_API_URL}
+  headers: { Authorization: "Bearer ${PMS_API_TOKEN}" }
+erp:
+  base_url: ${ERP_API_URL}
+  headers: { Authorization: "Bearer ${ERP_API_TOKEN}" }

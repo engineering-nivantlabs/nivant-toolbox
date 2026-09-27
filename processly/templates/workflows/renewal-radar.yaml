@@ -1,0 +1,116 @@
+workflow: renewal-radar
+version: 1
+mode: review
+description: 45 days before each renewal, requote the market, send a plain-English comparison, and make sure nobody renews by default.
+
+triggers:
+  - id: daily
+    label: Every morning
+    use: trigger.schedule
+    daily_at: "07:00"
+  - id: reply
+    label: Client replies
+    use: trigger.email
+    when: $contains($lowercase(trigger.subject), 'renewal')
+
+steps:
+  - id: path
+    use: control.switch
+    on: trigger_id
+    branches:
+      - case: daily
+        label: daily scan
+        steps:
+          - id: due
+            label: Find renewals
+            use: data.query
+            sql: |
+              SELECT id, client_name, email, phone, type, insurer, premium::float, renewal_premium::float, renews_on, claims_count
+                FROM policies WHERE renews_on = current_date + 45
+          - id: each
+            use: control.loop
+            over: steps.due.rows
+            branches:
+              - label: per policy
+                steps:
+                  - id: requote
+                    label: Requote
+                    use: integration.call
+                    connection: quote_engine
+                    path: /quotes
+                    body: { policy_type: "{{ item.type }}", current_premium: "{{ item.renewal_premium }}", claims: "{{ item.claims_count }}", exclude: ["{{ item.insurer }}"], limit: 3 }
+                  - id: compare
+                    label: Compare
+                    use: ai.summarize
+                    input: { current: "{{ item }}", market: "{{ steps.requote.data.quotes }}" }
+                    style: plain English for the client — what's changing, the best alternative, and what they'd save; no jargon
+                    max_words: 90
+                  - id: pack
+                    label: Renewal pack
+                    use: doc.generate
+                    template: renewal-pack.md
+                    data:
+                      client_name: "{{ item.client_name }}"
+                      policy_type: "{{ item.type }}"
+                      insurer: "{{ item.insurer }}"
+                      renews_on: "{{ item.renews_on }}"
+                      renewal_premium: "{{ item.renewal_premium }}"
+                      quotes: "{{ steps.requote.data.quotes }}"
+                      summary: "{{ steps.compare.summary }}"
+                  - id: send
+                    label: Send
+                    use: send.email
+                    to: "{{ item.email }}"
+                    subject: "Your {{ item.type }} renewal — {{ item.renews_on }}"
+                    text: "Hi {{ $substringBefore(item.client_name, ' ') }},\n\n{{ steps.compare.summary }}\n\nThe one-page comparison is attached. Just reply to this email to switch or stick.\n\n{{ business.signature }}"
+                    attach: ["{{ steps.pack.file }}"]
+                  - use: data.store
+                    collection: renewals
+                    key: "{{ $string(item.id) }}"
+                    data: { policy_id: "{{ item.id }}", email: "{{ $lowercase(item.email) }}", sent_on: "{{ $substring(run.started_at, 0, 10) }}", replied: false }
+          - id: silent
+            label: No reply after 7 days
+            use: data.query
+            sql: SELECT id, client_name, phone, type, renews_on FROM policies WHERE renews_on = current_date + 38
+          - id: calls
+            use: control.loop
+            over: steps.silent.rows
+            branches:
+              - label: per silent policy
+                steps:
+                  - id: status
+                    use: data.enrich
+                    records: { collection: renewals, key: "{{ $string(item.id) }}" }
+                  - use: task.create
+                    if: steps.status.found and steps.status.data.replied = false
+                    assignee: manager
+                    title: "Call {{ item.client_name }} before their {{ item.type }} renewal on {{ item.renews_on }}"
+                    body: "No reply to the renewal pack sent a week ago. Phone {{ item.phone }}."
+                    due_in: 2d
+
+      - case: reply
+        label: client replied
+        steps:
+          - id: policy
+            use: data.query
+            sql: SELECT id, client_name, type, renews_on FROM policies WHERE lower(email) = $1 AND renews_on > current_date ORDER BY renews_on LIMIT 1
+            params: ["{{ trigger.from }}"]
+          - id: intent
+            use: ai.classify
+            if: steps.policy.first != null
+            input: "{{ trigger.text }}"
+            labels:
+              switch: wants to move to the cheaper option
+              stay: wants to stay with their current insurer
+              question: has a question
+          - use: data.store
+            if: steps.policy.first != null
+            collection: renewals
+            key: "{{ $string(steps.policy.first.id) }}"
+            data: { policy_id: "{{ steps.policy.first.id }}", email: "{{ trigger.from }}", replied: true, intent: "{{ steps.intent.label }}" }
+          - use: task.create
+            if: steps.policy.first != null
+            assignee: manager
+            title: "{{ steps.policy.first.client_name }}: {{ steps.intent.label = 'switch' ? 'bind the new policy' : (steps.intent.label = 'stay' ? 'confirm renewal' : 'answer question') }} ({{ steps.policy.first.type }}, renews {{ steps.policy.first.renews_on }})"
+            body: "{{ trigger.text }}"
+            due_in: 1d

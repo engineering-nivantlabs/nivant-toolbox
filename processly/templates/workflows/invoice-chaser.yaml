@@ -1,0 +1,133 @@
+workflow: invoice-chaser
+version: 5
+mode: auto
+description: Chase overdue invoices every morning with a tone that escalates by days overdue.
+
+triggers:
+  - id: daily
+    label: Every morning
+    use: trigger.schedule
+    daily_at: "09:00"
+
+steps:
+  - id: find
+    label: Find overdue
+    use: data.query
+    sql: |
+      SELECT id, number, customer_name, email, phone, amount, currency, due_date,
+             (current_date - due_date) AS days_overdue
+        FROM invoices
+       WHERE status = 'open' AND NOT disputed AND due_date < current_date
+       ORDER BY due_date
+
+  - id: each
+    label: Each invoice
+    use: control.loop
+    over: steps.find.rows
+    branches:
+      - label: per invoice
+        steps:
+          - id: paid
+            label: Check payment
+            use: integration.call
+            connection: accounting
+            method: GET
+            path: "/invoices/{{ item.number }}"
+          - id: tone
+            label: Pick tone
+            use: control.branch
+            if: $not(steps.paid.data.status = 'paid')
+            branches:
+              - label: 1–7 days
+                when: item.days_overdue <= 7
+                steps:
+                  - id: gentle
+                    label: Gentle email
+                    use: send.email
+                    to: "{{ item.email }}"
+                    subject: "Invoice {{ item.number }} — friendly reminder"
+                    text: |
+                      Hi {{ $substringBefore(item.customer_name, ' ') }},
+
+                      Just a gentle note that invoice {{ item.number }} ({{ item.currency }} {{ item.amount }}) was due on {{ item.due_date }}. If it's already on its way, please ignore this.
+
+                      {{ business.signature }}
+              - label: 8–13 days
+                when: item.days_overdue <= 13
+                steps:
+                  - id: friendly
+                    label: WhatsApp nudge
+                    use: send.whatsapp
+                    if: item.phone != null
+                    to: "{{ item.phone }}"
+                    text: "Hi {{ $substringBefore(item.customer_name, ' ') }}, floating invoice {{ item.number }} ({{ item.currency }} {{ item.amount }}, due {{ item.due_date }}) to the top of your inbox. No stress if it's scheduled — just making sure it didn't get buried."
+              - label: 14–30 days
+                when: item.days_overdue <= 30
+                steps:
+                  - id: firm_draft
+                    label: Draft firm letter
+                    use: ai.generate
+                    format: email
+                    tone: firm but courteous
+                    brief: Write a firm reminder for an invoice that is two to four weeks overdue. State the amount and due date, ask for a payment date, and say that further reminders will copy our accounts team.
+                    context: "{{ item }}"
+                  - use: data.store
+                    note: queued for the owner's batch approval below
+                    collection: "{{ 'firm-reminders:' & run.id }}"
+                    key: "{{ item.number }}"
+                    data: { number: "{{ item.number }}", email: "{{ item.email }}", customer: "{{ item.customer_name }}", days: "{{ item.days_overdue }}", subject: "{{ steps.firm_draft.subject }}", text: "{{ steps.firm_draft.text }}" }
+              - label: 30+ days
+                otherwise: true
+                steps:
+                  - id: call
+                    label: Call task
+                    use: task.create
+                    assignee: manager
+                    title: "Call {{ item.customer_name }} about {{ item.number }} ({{ item.days_overdue }} days overdue)"
+                    body: "{{ item.currency }} {{ item.amount }}, due {{ item.due_date }}. Phone {{ item.phone }}."
+                    due_in: 1d
+          - id: mark_paid
+            label: Reconcile
+            use: integration.call
+            if: steps.paid.data.status = 'paid'
+            connection: accounting
+            method: POST
+            path: "/invoices/{{ item.number }}/mark-paid"
+            body: { source: processly }
+
+  - id: firm_queue
+    label: Firm letters
+    use: data.query
+    records: { collection: "{{ 'firm-reminders:' & run.id }}" }
+
+  - id: firm_ok
+    label: Owner approves
+    use: control.approval
+    if: steps.firm_queue.count > 0
+    approver: manager
+    title: "{{ steps.firm_queue.count }} firm reminder(s) to send today"
+    detail: "{{ steps.firm_queue.rows.{ 'to': customer & ' <' & email & '>', 'invoice': number, 'days overdue': days, 'subject': subject, 'text': text } }}"
+    timeout: 1d
+    on_timeout: reject
+    on_reject: continue
+
+  - id: firm_send
+    label: Firm emails
+    use: control.loop
+    if: steps.firm_ok.decision = 'approved'
+    over: steps.firm_queue.rows
+    branches:
+      - label: each letter
+        steps:
+          - use: send.email
+            to: "{{ item.email }}"
+            cc: accounts@demo.example
+            subject: "{{ item.subject }}"
+            text: "{{ item.text }}"
+
+  - id: summary
+    label: Summary
+    use: notify.team
+    if: steps.find.count > 0
+    to: accounts
+    text: "Invoice chaser: {{ steps.find.count }} overdue ({{ $sum(steps.find.rows.$number(amount)) }} total)."

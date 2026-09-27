@@ -1,14 +1,17 @@
 /* ============ TEMPLATE LIBRARY + DEMO RUNNER ============
- * Renders everything from primitives.js + templates.js: cards, goal filter,
+ * Renders everything from primitives.js + workflows.js (both exported from the
+ * engine) and templates.js (presentation + scripted demo): cards, goal filter,
  * progress chips, workflow map, YAML and the primitives panel.
  */
 (function () {
-  const P = window.PROCESSLY_PRIMITIVES, T = window.PROCESSLY_TEMPLATES, GOALS = window.PROCESSLY_GOALS;
-  if (!P || !T || !GOALS) return;
+  const P = window.PROCESSLY_PRIMITIVES, W = window.PROCESSLY_WORKFLOWS, GOALS = window.PROCESSLY_GOALS;
+  if (!P || !W || !GOALS || !window.PROCESSLY_TEMPLATES) return;
+  // Each template's `workflow` names an engine workflow; resolve it once.
+  const T = window.PROCESSLY_TEMPLATES.filter(t => W[t.workflow]).map(t => ({ ...t, workflow: W[t.workflow] }));
 
   const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const STEP_MS = RM ? 0 : 750;
-  const RESERVED = new Set(['id', 'label', 'use', 'note', 'branches']);
+  const RESERVED = new Set(['id', 'label', 'use', 'note', 'if', 'on_error', 'branches']);
   const PRIM = Object.fromEntries(P.primitives.map(p => [p.id, p]));
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -28,26 +31,32 @@
   }
   function usedPrims(t) { const u = new Set(); walk(t.workflow, n => u.add(n.use)); return u; }
 
-  /* ---------- YAML: rendered from the workflow, never hand-written ---------- */
+  /* ---------- YAML: the engine's own config, re-serialised for display ---------- */
   const M = (...entries) => ({ __m: entries.filter(e => e[1] !== undefined) });
   const asM = v => (v && v.__m ? v : { __m: Object.entries(v) });
   function stepM(s) {
     const e = [];
     if (s.id) e.push(['id', s.id]);
+    if (s.label) e.push(['label', s.label]);
     e.push(['use', s.use, s.note]);
+    if (s.if) e.push(['if', s.if]);
+    if (s.on_error) e.push(['on_error', s.on_error]);
     Object.entries(s).forEach(([k, v]) => { if (!RESERVED.has(k)) e.push([k, v]); });
-    if (s.branches) e.push(['branches', s.branches.map(b => M(['when', b.when], ['do', b.steps.map(stepM)]))]);
+    if (s.branches) e.push(['branches', s.branches.map(b => M(['label', b.label], ['when', b.when], ['case', b.case], ['otherwise', b.otherwise], ['steps', b.steps.map(stepM)]))]);
     return { __m: e };
   }
   const scalar = v => {
     if (typeof v !== 'string') return String(v);
-    return /^[-?:,[\]{}#&*!|>'"%@`\s]|: | #|\s$|^$/.test(v) ? JSON.stringify(v) : v;
+    return /^[-?:,[\]{}#&*!|>'"%@`\s]|: | #|\s$|^$|^(true|false|null|yes|no|\d[\d.]*)$/i.test(v) ? JSON.stringify(v) : v;
   };
   function emit(m, ind, dash, out) {
     m.__m.forEach(([k, v, c], i) => {
       const pre = ' '.repeat(dash && i > 0 ? ind + 2 : ind) + (dash && i === 0 ? '- ' : '');
       const child = ind + (dash ? 2 : 0) + 2;
-      if (Array.isArray(v) && v.every(x => x === null || typeof x !== 'object')) out.push({ pre, k, v: '[' + v.map(scalar).join(', ') + ']', c });
+      if (typeof v === 'string' && v.includes('\n')) {
+        out.push({ pre, k, v: '|', c });
+        v.replace(/\n$/, '').split('\n').forEach(line => out.push({ text: ' '.repeat(child) + line }));
+      } else if (Array.isArray(v) && v.every(x => x === null || typeof x !== 'object')) out.push({ pre, k, v: '[' + v.map(scalar).join(', ') + ']', c });
       else if (Array.isArray(v)) { out.push({ pre, k, c }); v.forEach(x => emit(asM(x), child, true, out)); }
       else if (v && typeof v === 'object') { out.push({ pre, k, c }); emit(asM(v), child, false, out); }
       else out.push({ pre, k, v: scalar(v), c });
@@ -55,9 +64,10 @@
     return out;
   }
   function yamlHTML(wf) {
-    const lines = emit(M(['workflow', wf.name], ['version', wf.version], ['mode', wf.mode, wf.modeNote],
+    const lines = emit(M(['workflow', wf.workflow], ['version', wf.version], ['mode', wf.mode], ['description', wf.description],
       ['triggers', wf.triggers.map(stepM)], ['steps', wf.steps.map(stepM)]), 0, false, []);
     const html = lines.map(l => {
+      if (l.text != null) return esc(l.text);
       const plain = l.pre + l.k + ':' + (l.v != null ? ' ' + l.v : '');
       const val = l.v == null ? '' : ' ' + (l.k === 'use' ? `<span class="yp">${esc(l.v)}</span>` : esc(l.v));
       const cmt = l.c ? ' '.repeat(Math.max(2, 34 - plain.length)) + `<span class="yc"># ${esc(l.c)}</span>` : '';
@@ -75,7 +85,7 @@
   function stepsHTML(steps, small) {
     return steps.map((s, i) => (i ? '<div class="wf-arrow"></div>' : '') + nodeHTML(s, small) + (s.branches
       ? '<div class="wf-arrow"></div><div class="wf-branches">' + s.branches.map(b =>
-          `<div class="wf-branch"><span class="wf-when">${esc(b.when)}</span>${stepsHTML(b.steps, true)}</div>`).join('') + '</div>'
+          `<div class="wf-branch"><span class="wf-when" title="${esc(b.when ?? '')}">${esc(b.label ?? b.when ?? (b.otherwise ? 'otherwise' : String(b.case)))}</span>${stepsHTML(b.steps, true)}</div>`).join('') + '</div>'
       : '')).join('');
   }
   const mapHTML = wf => `<div class="wf"><div class="wf-row">${wf.triggers.map(tr => nodeHTML(tr)).join('')}</div>` +
@@ -132,7 +142,7 @@
     el.industry.textContent = t.industry;
     el.name.textContent = t.name;
     el.problem.textContent = t.problem;
-    el.chips.innerHTML = ['Trigger'].concat(wf.steps.map(s => s.label))
+    el.chips.innerHTML = ['Trigger'].concat(wf.steps.map(s => s.label ?? PRIM[s.use].label))
       .map(s => `<span class="rchip">${esc(s)}</span>`).join('<span class="rsep">→</span>');
     el.inMeta.textContent = t.demo.incoming.meta;
     el.inText.textContent = t.demo.incoming.text;

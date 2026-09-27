@@ -1,0 +1,121 @@
+workflow: service-reminder
+version: 3
+mode: auto
+description: Remind customers when their car is due for a service (by date or estimated mileage) and book them in with one tap.
+
+triggers:
+  - id: daily
+    label: Every morning
+    use: trigger.schedule
+    daily_at: "10:00"
+  - id: reply
+    label: Customer taps a button
+    use: trigger.whatsapp
+    types: [interactive, button]
+
+steps:
+  - id: path
+    use: control.switch
+    on: trigger_id
+    branches:
+      - case: daily
+        label: daily scan
+        steps:
+          - id: due
+            label: Find due
+            use: data.query
+            note: estimated km = last service km + days since × daily average
+            sql: |
+              SELECT id, customer_name, phone, make_model, advisor, last_service_at,
+                     round(last_service_km + (current_date - last_service_at) * km_per_day)::int AS est_km, next_service_km
+                FROM vehicles
+               WHERE last_service_km + (current_date - last_service_at + 14) * km_per_day >= next_service_km
+                 AND last_service_at < current_date - 60
+          - id: each
+            use: control.loop
+            over: steps.due.rows
+            branches:
+              - label: per vehicle
+                steps:
+                  - id: remembered
+                    use: data.enrich
+                    records: { collection: service-reminders, key: "{{ $string(item.id) & ':' & $string(item.next_service_km) }}" }
+                  - id: fresh
+                    use: data.transform
+                    note: never reminded for this service, or snoozed until today or earlier
+                    set:
+                      send: "{{ $not(steps.remembered.found) or (steps.remembered.data.remind_after != null and steps.remembered.data.remind_after <= $substring(run.started_at, 0, 10)) }}"
+                  - id: write
+                    label: Personalise
+                    use: ai.generate
+                    if: steps.fresh.send
+                    brief: >-
+                      Tell the customer their car is about due for its service (use the estimated km and the service interval),
+                      mention when they last came in and their advisor by first name, and ask if they'd like to book. Two sentences.
+                    context: "{{ item }}"
+                    max_words: 60
+                  - id: send
+                    label: Send
+                    use: send.whatsapp
+                    if: steps.fresh.send
+                    to: "{{ item.phone }}"
+                    text: "{{ steps.write.text }}"
+                    buttons: [Book a service, Remind me later]
+                  - use: data.store
+                    if: steps.fresh.send
+                    collection: service-reminders
+                    key: "{{ $string(item.id) & ':' & $string(item.next_service_km) }}"
+                    data: { vehicle_id: "{{ item.id }}", phone: "{{ item.phone }}", sent_at: "{{ run.started_at }}", remind_after: null }
+
+      - case: reply
+        label: customer replied
+        steps:
+          - id: vehicle
+            use: data.query
+            sql: SELECT id, customer_name, make_model, advisor, next_service_km FROM vehicles WHERE regexp_replace(phone, '\D', '', 'g') = $1 LIMIT 1
+            params: ["{{ trigger.from }}"]
+          - id: answer
+            use: control.switch
+            if: steps.vehicle.first != null
+            on: trigger.button
+            branches:
+              - case: Book a service
+                steps:
+                  - id: slots
+                    use: calendar.book
+                    action: find_slots
+                    calendar: workshop
+                    duration: 2h
+                    hours: [8, 16]
+                    days: [1, 2, 3, 4, 5, 6]
+                    count: 3
+                  - id: offer
+                    use: send.whatsapp
+                    to: "{{ trigger.from }}"
+                    text: "Great! Which suits you for the {{ steps.vehicle.first.make_model }}? A courtesy car is included."
+                    buttons: "{{ steps.slots.labels }}"
+                  - id: picked
+                    use: control.wait
+                    event: { channel: whatsapp, key: "{{ trigger.from }}" }
+                    timeout: 2d
+                  - id: book
+                    label: Book bay
+                    use: calendar.book
+                    if: steps.picked.received = true
+                    calendar: workshop
+                    start: "{{ steps.slots.slots[label = $$.steps.picked.event.text].start }}"
+                    duration: 2h
+                    title: "Service: {{ steps.vehicle.first.make_model }} — {{ steps.vehicle.first.customer_name }} (courtesy car)"
+                  - use: send.whatsapp
+                    if: steps.picked.received = true
+                    to: "{{ trigger.from }}"
+                    text: "Booked ✅ {{ steps.book.label }}. {{ $substringBefore(steps.vehicle.first.advisor, ' ') }} will have your courtesy car ready."
+              - case: Remind me later
+                steps:
+                  - use: data.store
+                    collection: service-reminders
+                    key: "{{ $string(steps.vehicle.first.id) & ':' & $string(steps.vehicle.first.next_service_km) }}"
+                    data: { vehicle_id: "{{ steps.vehicle.first.id }}", phone: "{{ trigger.from }}", remind_after: "{{ $substring($addDuration(run.started_at, '14d'), 0, 10) }}" }
+                  - use: send.whatsapp
+                    to: "{{ trigger.from }}"
+                    text: "No problem — we'll check back in two weeks."

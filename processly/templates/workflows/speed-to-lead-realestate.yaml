@@ -1,0 +1,165 @@
+workflow: speed-to-lead-realestate
+version: 7
+mode: auto
+description: Answer property enquiries from WhatsApp and portal forms within seconds, any hour.
+
+triggers:
+  - id: wa
+    label: WhatsApp message
+    use: trigger.whatsapp
+    types: [text]
+  - id: portal
+    label: Portal enquiry
+    use: trigger.form
+
+steps:
+  - id: normalize
+    label: Normalize
+    use: data.transform
+    note: one shape, whatever the channel
+    set:
+      name: "{{ trigger.name }}"
+      phone: "{{ trigger_id = 'wa' ? trigger.from : $replace($string(trigger.phone), /[^0-9]/, '') }}"
+      email: "{{ trigger.email }}"
+      message: "{{ trigger_id = 'wa' ? trigger.text : trigger.message }}"
+      channel: "{{ trigger_id = 'wa' ? 'whatsapp' : 'portal' }}"
+
+  - id: dedupe
+    label: Dedupe
+    use: data.dedupe
+    namespace: leads
+    keys: ["{{ steps.normalize.phone ? steps.normalize.phone : steps.normalize.email }}"]
+
+  - id: extract
+    label: Extract
+    use: ai.extract
+    input: "{{ steps.normalize.message }}"
+    fields:
+      intent: { type: string, enum: [viewing, availability, price, other] }
+      area: neighbourhood or building named
+      bedrooms: { type: integer, description: number of bedrooms wanted }
+      budget: { type: number, description: yearly rent budget }
+      timeline: when they want to move
+
+  - id: listings
+    label: Match listings
+    use: data.query
+    sql: |
+      SELECT id, title, area, bedrooms, rent, sqft, features FROM listings
+       WHERE status = 'available'
+         AND ($1::text IS NULL OR area ILIKE '%' || $1 || '%' OR title ILIKE '%' || $1 || '%')
+         AND ($2::int IS NULL OR bedrooms = $2)
+       ORDER BY abs(rent - coalesce($3::numeric, rent)) LIMIT 3
+    params: ["{{ steps.extract.area }}", "{{ steps.extract.bedrooms }}", "{{ steps.extract.budget }}"]
+
+  - id: qualify
+    label: Qualify
+    use: ai.qualify
+    rubric: lead-scoring.md
+    input:
+      message: "{{ steps.normalize.message }}"
+      extracted: "{{ steps.extract }}"
+      matching_listings: "{{ steps.listings.count }}"
+      repeat_contact: "{{ steps.dedupe.duplicate }}"
+
+  - id: route
+    label: Decide
+    use: control.branch
+    branches:
+      - label: hot
+        when: steps.qualify.score >= 0.7
+        steps:
+          - id: crm
+            label: CRM
+            use: crm.create
+            object: lead
+            stage: hot
+            data:
+              name: "{{ steps.normalize.name }}"
+              phone: "{{ steps.normalize.phone }}"
+              email: "{{ steps.normalize.email }}"
+              source: "{{ steps.normalize.channel }}"
+              area: "{{ steps.extract.area }}"
+              budget: "{{ steps.extract.budget }}"
+              score: "{{ steps.qualify.score }}"
+          - id: slots
+            label: Find viewing slots
+            use: calendar.book
+            action: find_slots
+            calendar: viewings
+            duration: 45m
+            count: 2
+            hours: [10, 18]
+            days: [0, 1, 2, 3, 4, 6]
+          - id: notify
+            label: Ping agent
+            use: notify.team
+            to: sales
+            text: "🔥 Hot lead ({{ $round(steps.qualify.score * 100) }}%): {{ steps.normalize.name }}, {{ steps.normalize.phone }} — {{ steps.normalize.message }}"
+          - id: draft
+            label: Draft reply
+            use: ai.generate
+            brief: >-
+              Reply to this property enquiry. Confirm what's available from the listings (if any match),
+              and offer the two viewing slots by their labels. Ask which suits them. Sign as Rana.
+            context:
+              enquiry: "{{ steps.normalize.message }}"
+              name: "{{ steps.normalize.name }}"
+              listings: "{{ steps.listings.rows }}"
+              viewing_slots: "{{ steps.slots.labels }}"
+          - id: reply
+            label: Reply
+            use: send.whatsapp
+            if: steps.normalize.phone != null and steps.normalize.phone != ''
+            to: "{{ steps.normalize.phone }}"
+            text: "{{ steps.draft.text }}"
+          - id: reply_email
+            label: Reply by email
+            use: send.email
+            if: (steps.normalize.phone = null or steps.normalize.phone = '') and steps.normalize.email != null
+            to: "{{ steps.normalize.email }}"
+            subject: Your enquiry
+            text: "{{ steps.draft.text }}"
+      - label: nurture
+        otherwise: true
+        steps:
+          - use: crm.create
+            object: lead
+            stage: nurture
+            data:
+              name: "{{ steps.normalize.name }}"
+              phone: "{{ steps.normalize.phone }}"
+              email: "{{ steps.normalize.email }}"
+              source: "{{ steps.normalize.channel }}"
+              score: "{{ steps.qualify.score }}"
+          - id: nurture_draft
+            use: ai.generate
+            brief: Thank them, answer what you can from the listings, and ask one question to understand their budget or timing.
+            context:
+              enquiry: "{{ steps.normalize.message }}"
+              listings: "{{ steps.listings.rows }}"
+          - use: send.whatsapp
+            if: steps.normalize.phone != null and steps.normalize.phone != ''
+            to: "{{ steps.normalize.phone }}"
+            text: "{{ steps.nurture_draft.text }}"
+
+  - id: listen
+    label: Wait for reply
+    use: control.wait
+    if: steps.normalize.phone != null and steps.normalize.phone != ''
+    event: { channel: whatsapp, key: "{{ steps.normalize.phone }}" }
+    timeout: 24h
+
+  - id: handoff
+    label: Hand to agent
+    use: notify.team
+    if: steps.listen.received = true
+    to: sales
+    text: "💬 {{ steps.normalize.name }} replied: {{ steps.listen.event.text }}"
+
+  - id: nudge
+    label: Follow-up
+    use: send.whatsapp
+    if: steps.listen.timed_out = true and steps.route.branch = 'hot'
+    to: "{{ steps.normalize.phone }}"
+    text: "Hi {{ steps.normalize.name ? $substringBefore(steps.normalize.name, ' ') : 'there' }}, just checking in — would one of those viewing times work? Happy to suggest others too."

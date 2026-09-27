@@ -1,0 +1,128 @@
+workflow: candidate-screening
+version: 2
+mode: review
+description: Read every CV the moment it arrives, score it against the role scorecard, and invite the strongest within minutes. In review mode, a recruiter approves each outgoing action.
+
+triggers:
+  - id: mail
+    label: Application email
+    use: trigger.email
+    inbox: jobs@
+  - id: form
+    label: Careers page
+    use: trigger.form
+
+steps:
+  - id: cv
+    label: Read CV
+    use: ai.extract
+    input: "{{ trigger_id = 'mail' ? trigger.subject & '\n' & trigger.text : trigger.cover_letter }}"
+    files: "{{ trigger.files }}"
+    fields:
+      name: candidate's full name
+      email: candidate's email
+      phone: candidate's phone
+      years_experience: { type: number }
+      current_role: most recent job title and employer
+      skills: { type: array, description: key skills }
+      location: where they're based
+      notice_period_days: { type: integer }
+
+  - id: who
+    use: data.transform
+    set:
+      name: "{{ steps.cv.name ? steps.cv.name : (trigger.from_name ? trigger.from_name : trigger.name) }}"
+      email: "{{ $lowercase(steps.cv.email ? steps.cv.email : (trigger.from ? trigger.from : trigger.email)) }}"
+
+  - id: dedupe
+    use: data.dedupe
+    namespace: candidates
+    keys: ["{{ steps.who.email }}"]
+
+  - id: score
+    label: Score
+    use: ai.qualify
+    if: steps.dedupe.duplicate = false
+    rubric: scorecard-ops-manager.md
+    input: "{{ steps.cv }}"
+
+  - id: route
+    label: Route
+    use: control.branch
+    if: steps.dedupe.duplicate = false
+    branches:
+      - label: shortlist (≥ 0.8)
+        when: steps.score.score >= 0.8
+        steps:
+          - id: ats
+            label: ATS
+            use: crm.create
+            object: candidate
+            stage: shortlist
+            data: { name: "{{ steps.who.name }}", email: "{{ steps.who.email }}", score: "{{ steps.score.score }}", role: Operations Manager }
+          - id: slots
+            use: calendar.book
+            action: find_slots
+            calendar: hiring-manager
+            duration: 30m
+            count: 3
+          - id: invite
+            label: Invite
+            use: send.email
+            to: "{{ steps.who.email }}"
+            subject: Operations Manager — let's talk
+            text: |
+              Hi {{ $substringBefore(steps.who.name, ' ') }},
+
+              Thanks for applying for Operations Manager — your background ({{ steps.cv.current_role }}) is a strong match. Could you do a 30-minute call with Maya, our Head of Operations? Reply with the time that suits you:
+
+              {{ $join(steps.slots.labels, '\n') }}
+
+              {{ business.signature }}
+          - id: pick
+            label: Wait for reply
+            use: control.wait
+            event: { channel: email, key: ["{{ steps.invite.message_id }}", "{{ steps.who.email }}"] }
+            timeout: 5d
+          - id: choice
+            use: ai.decide
+            if: steps.pick.received = true
+            input: "{{ steps.pick.event.text }}"
+            options: "{{ steps.slots.slots }}"
+            criteria: [the time slot the candidate said they want]
+          - id: book
+            label: Book
+            use: calendar.book
+            if: steps.pick.received = true
+            calendar: hiring-manager
+            start: "{{ steps.choice.choice.start }}"
+            duration: 30m
+            title: "Interview: {{ steps.who.name }} (Operations Manager)"
+            attendees: ["{{ steps.who.email }}", maya@example.com]
+          - use: send.email
+            if: steps.pick.received = true
+            to: "{{ steps.who.email }}"
+            subject: "Confirmed: {{ steps.book.label }}"
+            text: "You're booked with Maya for {{ steps.book.label }}. Looking forward to it!\n\n{{ business.signature }}"
+            in_reply_to: "{{ steps.pick.event.message_id }}"
+      - label: borderline (0.5–0.8)
+        when: steps.score.score >= 0.5
+        steps:
+          - use: task.create
+            assignee: manager
+            title: "Review borderline CV: {{ steps.who.name }} ({{ $round(steps.score.score * 100) }}%)"
+            body: "{{ $join(steps.score.reasons, '\n') }}"
+            due_in: 2d
+      - label: not a fit (< 0.5)
+        otherwise: true
+        steps:
+          - id: no
+            use: ai.generate
+            format: email
+            tone: kind and specific, never generic
+            brief: Tell the candidate we won't take their application forward for Operations Manager. Thank them, mention one genuine strength from their CV, and wish them well. Don't give scores or list shortcomings.
+            context: { cv: "{{ steps.cv }}" }
+          - use: send.email
+            to: "{{ steps.who.email }}"
+            subject: "{{ steps.no.subject }}"
+            text: "{{ steps.no.text }}"

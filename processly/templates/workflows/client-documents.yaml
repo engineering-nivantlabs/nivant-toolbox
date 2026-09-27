@@ -1,0 +1,131 @@
+workflow: client-documents
+version: 3
+mode: auto
+description: Collect every document a new client owes you, identify and file each upload, and chase what's missing.
+
+triggers:
+  - id: onboard
+    label: Client onboarded
+    use: trigger.api
+    event: client.onboarded
+    # payload: { client_id }
+  - id: upload
+    label: Document uploaded
+    use: trigger.file
+    folder: clients
+    # from the link {{ $uploadLink(client_id, 'clients') }}
+
+steps:
+  - id: client
+    use: data.query
+    sql: SELECT id, name, contact_name, email, type FROM clients WHERE id = $1::int
+    params: ["{{ trigger_id = 'onboard' ? trigger.client_id : trigger.ref }}"]
+
+  - id: checklist
+    label: Checklist
+    use: data.query
+    sql: SELECT item, description FROM document_checklists WHERE client_type = $1 ORDER BY item
+    params: ["{{ steps.client.first.type }}"]
+
+  - id: path
+    use: control.switch
+    on: trigger_id
+    branches:
+      - case: onboard
+        label: new client
+        steps:
+          - id: welcome
+            use: send.email
+            to: "{{ steps.client.first.email }}"
+            subject: "Welcome aboard — {{ steps.checklist.count }} documents we need"
+            text: |
+              Hi {{ steps.client.first.contact_name }},
+
+              Welcome! To get started we need the following — upload them here whenever you have them (PDFs or phone photos are fine):
+              {{ $uploadLink(steps.client.first.id, 'clients') }}
+
+              {{ $join(steps.checklist.rows.('• ' & description), '\n') }}
+
+              {{ business.signature }}
+          - id: chase
+            label: Chase
+            use: control.loop
+            every: 3d
+            max: 10
+            stop_when: steps.status.missing_count = 0
+            branches:
+              - label: every 3 days
+                steps:
+                  - id: received
+                    use: data.query
+                    records: { collection: "{{ 'client-docs:' & steps.client.first.id }}" }
+                  - id: status
+                    use: data.transform
+                    set:
+                      missing: "{{ [steps.checklist.rows[$not(item in $$.steps.received.rows.key)]] }}"
+                      missing_count: "{{ $count(steps.checklist.rows[$not(item in $$.steps.received.rows.key)]) }}"
+                  - id: remind
+                    label: Reminder
+                    use: send.email
+                    if: index > 0 and steps.status.missing_count > 0
+                    to: "{{ steps.client.first.email }}"
+                    subject: "{{ steps.status.missing_count }} document(s) still to come"
+                    text: |
+                      Hi {{ steps.client.first.contact_name }}, thanks for what you've sent so far — {{ steps.checklist.count - steps.status.missing_count }} of {{ steps.checklist.count }} done.
+
+                      Still needed:
+                      {{ $join(steps.status.missing.('• ' & description), '\n') }}
+
+                      Same link as before: {{ $uploadLink(steps.client.first.id, 'clients') }}
+          - id: handoff
+            label: Hand off
+            use: task.create
+            if: steps.status.missing_count = 0
+            assignee: manager
+            title: "{{ steps.client.first.name }}: all {{ steps.checklist.count }} documents in — start the work"
+            body: "Filed under clients/{{ steps.client.first.id }}."
+          - use: notify.team
+            if: steps.status.missing_count > 0
+            to: manager
+            text: "{{ steps.client.first.name }} still owes {{ steps.status.missing_count }} document(s) after 10 reminders."
+
+      - case: upload
+        label: new upload
+        steps:
+          - id: identify
+            label: Identify
+            use: ai.extract
+            input: "Client: {{ steps.client.first.name }}. Uploaded file: {{ trigger.file.name }}. Note from client: {{ trigger.note }}"
+            files: ["{{ trigger.file }}"]
+            instructions: Identify which checklist item this document is. Use null for document_type if it matches none.
+            fields:
+              document_type: { type: string, enum: "{{ steps.checklist.rows.item }}" }
+              period_start: { type: string, description: "first date covered, YYYY-MM-DD" }
+              period_end: { type: string, description: "last date covered, YYYY-MM-DD" }
+              legible: { type: boolean, description: whether the whole document is readable }
+              issues: anything wrong or missing (pages, dates, blur)
+          - id: check
+            label: Validate
+            use: data.validate
+            rules:
+              - { name: recognised, check: steps.identify.document_type != null, message: "we couldn't tell which document this is" }
+              - { name: legible, check: steps.identify.legible = true, message: "part of it isn't readable" }
+          - id: file
+            label: File it
+            use: data.store
+            if: steps.check.valid
+            file: "{{ trigger.file }}"
+            folder: "{{ 'clients/' & steps.client.first.id }}"
+            name: "{{ steps.identify.document_type & (steps.identify.period_start ? '_' & steps.identify.period_start & '_' & steps.identify.period_end : '') & '.' & $split(trigger.file.name, '.')[-1] }}"
+          - id: tick
+            use: data.store
+            if: steps.check.valid
+            collection: "{{ 'client-docs:' & steps.client.first.id }}"
+            key: "{{ steps.identify.document_type }}"
+            data: { file: "{{ steps.file.file.id }}", period_start: "{{ steps.identify.period_start }}", period_end: "{{ steps.identify.period_end }}", issues: "{{ steps.identify.issues }}" }
+          - id: redo
+            use: send.email
+            if: $not(steps.check.valid)
+            to: "{{ steps.client.first.email }}"
+            subject: "About the file you just sent"
+            text: "Hi {{ steps.client.first.contact_name }}, thanks for uploading {{ trigger.file.name }} — {{ $join(steps.check.failures.message, ' and ') }}. Could you send it again? {{ $uploadLink(steps.client.first.id, 'clients') }}"

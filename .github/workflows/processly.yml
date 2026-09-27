@@ -1,0 +1,43 @@
+name: Processly engine
+
+on:
+  push:
+    branches: [main]
+    paths: ['processly/**', '.github/workflows/processly.yml']
+  pull_request:
+    paths: ['processly/**', '.github/workflows/processly.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: processly
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: processly/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+        env:
+          TEST_PG_URL: postgresql://postgres@localhost:5432/postgres
+      - name: Validate the template library
+        run: npx tsx src/cli.ts validate --templates templates/workflows
+        env:
+          CONFIG_DIR: templates
+      - name: Landing page matches the engine (run `npm run export:site` if this fails)
+        run: npx tsx scripts/export-site.ts && git diff --exit-code -- ../public/processly
+      - name: Landing page demos point at real steps
+        run: node ../scripts/validate-processly.mjs

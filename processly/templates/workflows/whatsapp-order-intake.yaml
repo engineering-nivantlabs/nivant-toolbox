@@ -1,0 +1,113 @@
+workflow: whatsapp-order-intake
+version: 5
+mode: auto
+description: Turn trade orders sent as WhatsApp photos or messages into confirmed ERP orders with invoices, no re-typing.
+
+triggers:
+  - id: wa
+    label: Order message or photo
+    use: trigger.whatsapp
+    types: [text, image, document]
+
+steps:
+  - id: customer
+    label: Find customer
+    use: data.query
+    sql: SELECT phone, name, credit_limit::float, balance::float FROM trade_customers WHERE phone = $1
+    params: ["{{ trigger.from }}"]
+
+  - id: known
+    label: Known customer?
+    use: data.validate
+    on_fail: stop
+    rules:
+      - { name: trade customer, check: steps.customer.first != null, message: not a registered trade customer }
+
+  - id: catalog
+    label: Load catalog
+    use: data.query
+    sql: SELECT sku, name, unit, price::float AS price, stock FROM products ORDER BY name
+
+  - id: read
+    label: Read order
+    use: ai.extract
+    input: "Order from {{ steps.customer.first.name }}: {{ trigger.text }}\n\nCatalog (sku | name | unit):\n{{ $join(steps.catalog.rows.(sku & ' | ' & name & ' | ' & unit), '\n') }}"
+    files: "{{ trigger.files }}"
+    instructions: >-
+      Read every order line (from the text and/or the photo). Map each to a catalog SKU; if a line is ambiguous,
+      pick the closest SKU and add it to unclear with what was written.
+    fields:
+      lines: { type: array, description: "order lines as objects {sku, qty, written_as}", items: { type: object, properties: { sku: { type: string }, qty: { type: integer }, written_as: { type: string } }, required: [sku, qty, written_as], additionalProperties: false } }
+      unclear: { type: array, description: "lines that were hard to read, as written" }
+
+  - id: priced
+    label: Match SKUs
+    use: data.transform
+    set:
+      lines: "{{ [steps.read.lines.( $line := $; $p := $$.steps.catalog.rows[sku = $line.sku][0]; { 'sku': sku, 'name': $p.name, 'qty': qty, 'price': $p.price, 'stock': $p.stock, 'short': $p.stock < qty, 'written_as': written_as } )] }}"
+      total: "{{ $round($sum(steps.read.lines.( $line := $; $line.qty * $$.steps.catalog.rows[sku = $line.sku][0].price )), 2) }}"
+
+  - id: check
+    label: Check
+    use: data.validate
+    rules:
+      - { name: stock, check: "$count(steps.priced.lines[short = true]) = 0", message: some lines are short on stock }
+      - { name: credit, check: steps.customer.first.balance + steps.priced.total <= steps.customer.first.credit_limit, message: over the credit limit }
+      - { name: minimum, check: steps.priced.total >= 100, message: below the $100 minimum order }
+
+  - id: summary
+    label: Write summary
+    use: ai.generate
+    brief: >-
+      Confirm the order back to the customer: item count and total, then only the lines that need attention
+      (short stock with a sensible substitute from the catalog, and anything that was unclear, saying how we read it).
+      If over the credit limit, say an account manager will call. End with: tap Confirm and it ships today.
+    context: { lines: "{{ steps.priced.lines }}", total: "{{ steps.priced.total }}", unclear: "{{ steps.read.unclear }}", problems: "{{ steps.check.failures }}", catalog: "{{ steps.catalog.rows }}" }
+    max_words: 90
+
+  - id: confirm
+    label: Ask to confirm
+    use: send.whatsapp
+    to: "{{ trigger.from }}"
+    reply_to: "{{ trigger.message_id }}"
+    text: "{{ steps.summary.text }}"
+    buttons: [Confirm, Change something]
+
+  - id: answer
+    label: Customer OK
+    use: control.wait
+    event: { channel: whatsapp, key: ["{{ trigger.from }}", "{{ steps.confirm.message_id }}"] }
+    timeout: 4h
+
+  - id: outcome
+    label: Place order
+    use: control.branch
+    branches:
+      - label: confirmed
+        when: steps.answer.received = true and steps.answer.event.button = 'Confirm' and $count(steps.check.failures[name = 'credit']) = 0
+        steps:
+          - id: erp
+            label: ERP order
+            use: integration.call
+            connection: erp
+            path: /sales-orders
+            body: { customer_phone: "{{ trigger.from }}", lines: "{{ steps.priced.lines.{ 'sku': sku, 'qty': short ? stock : qty } }}", source: whatsapp }
+          - id: invoice
+            label: Invoice
+            use: doc.generate
+            template: invoice.md
+            data:
+              invoice_number: "{{ steps.erp.data.invoice_number ? steps.erp.data.invoice_number : steps.erp.data.id }}"
+              customer: "{{ steps.customer.first.name }}"
+              lines: "{{ steps.priced.lines.{ 'sku': sku, 'name': name, 'qty': short ? stock : qty, 'price': price } }}"
+              total: "{{ $round($sum(steps.priced.lines.((short ? stock : qty) * price)), 2) }}"
+          - use: send.whatsapp
+            to: "{{ trigger.from }}"
+            text: "Order {{ steps.erp.data.id }} confirmed ✅ Invoice attached."
+            document: "{{ steps.invoice.file }}"
+      - label: needs a person
+        otherwise: true
+        steps:
+          - use: notify.team
+            to: sales
+            text: "Order from {{ steps.customer.first.name }} needs attention ({{ steps.answer.received ? 'customer said: ' & steps.answer.event.text : 'no confirmation in 4h' }}). {{ $join(steps.check.failures.message, '; ') }}"

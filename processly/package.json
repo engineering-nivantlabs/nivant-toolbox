@@ -1,0 +1,50 @@
+{
+  "name": "processly-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Processly workflow engine: runs configuration-only workflows built from reusable primitives.",
+  "type": "module",
+  "bin": {
+    "processly": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts start",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js start",
+    "migrate": "tsx src/cli.ts migrate",
+    "validate": "tsx src/cli.ts validate",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test --test-concurrency=1 test/*.test.ts",
+    "export:site": "tsx scripts/export-site.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@fastify/formbody": "^9.0.0",
+    "@fastify/multipart": "^10.1.2",
+    "croner": "^10.0.1",
+    "fastify": "^5.12.5",
+    "google-auth-library": "^11.1.0",
+    "imapflow": "^2.0.8",
+    "jsonata": "^2.2.2",
+    "mailparser": "^3.9.28",
+    "nodemailer": "^10.0.11",
+    "pdfkit": "^0.20.2",
+    "pg": "^8.23.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.6",
+    "@types/node": "^26.6.3",
+    "@types/nodemailer": "^8.0.2",
+    "@types/pdfkit": "^0.17.6",
+    "@types/pg": "^8.23.1",
+    "@types/smtp-server": "^3.5.13",
+    "smtp-server": "^3.19.13",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

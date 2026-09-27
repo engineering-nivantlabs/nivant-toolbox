@@ -1,0 +1,125 @@
+workflow: quote-followup
+version: 3
+mode: auto
+description: Follow up every quote four times until the customer replies, then act on what they said.
+
+triggers:
+  - id: sent
+    label: Quote sent
+    use: trigger.api
+    event: quote.sent
+    # payload: { quote_number, customer_name, email, amount, description, crm_id, similar_job? }
+
+steps:
+  - id: cadence
+    label: Cadence
+    use: control.loop
+    note: touches on days 2, 4, 7 and 14 after the quote; any reply stops it
+    over: "[{'day': 2, 'brief': 'recap the quote and offer proof: a similar job we finished'}, {'day': 4, 'brief': 'answer the usual objections: timing, mess, payment options'}, {'day': 7, 'brief': 'mention the quote is valid for 14 days and ask if they want to hold a start date'}, {'day': 14, 'brief': 'polite last check-in; say we will close the file unless they want to go ahead'}, {'day': 21}]"
+    stop_when: steps.listen.received = true
+    branches:
+      - label: each touch
+        steps:
+          - id: listen
+            label: Wait for reply
+            use: control.wait
+            event: { channel: email, key: "{{ $lowercase(trigger.email) }}" }
+            until: "{{ $addDuration(run.started_at, $string(item.day) & 'd') }}"
+          - id: draft
+            label: Draft touch
+            use: ai.generate
+            if: steps.listen.timed_out = true and $exists(item.brief)
+            format: email
+            brief: "Follow-up email about a quote. This touch should: {{ item.brief }}. Keep it short and never pushy."
+            context:
+              customer: "{{ trigger.customer_name }}"
+              quote: "{{ trigger.quote_number }}"
+              amount: "{{ trigger.amount }}"
+              job: "{{ trigger.description }}"
+              similar_job: "{{ trigger.similar_job }}"
+          - id: send
+            label: Send
+            use: send.email
+            if: steps.listen.timed_out = true and $exists(item.brief)
+            to: "{{ trigger.email }}"
+            subject: "{{ steps.draft.subject }}"
+            text: "{{ steps.draft.text }}"
+
+  - id: classify
+    label: Read reply
+    use: ai.classify
+    if: steps.listen.received = true
+    input: "{{ steps.listen.event.text }}"
+    labels:
+      go_ahead: they accept the quote or want to book the work
+      questions: they have questions or want changes
+      not_now: they're declining or postponing
+
+  - id: close
+    label: Close
+    use: control.switch
+    on: "steps.listen.received = true ? steps.classify.label : 'no_reply'"
+    branches:
+      - case: go_ahead
+        label: go ahead
+        steps:
+          - id: won
+            label: Mark won
+            use: crm.update
+            object: deal
+            record_id: "{{ trigger.crm_id }}"
+            stage: won
+          - id: slot
+            use: calendar.book
+            action: find_slots
+            calendar: jobs
+            duration: 8h
+            hours: [8, 17]
+            count: 1
+            within: 21d
+          - id: hold
+            label: Hold start date
+            use: calendar.book
+            action: hold
+            calendar: jobs
+            title: "{{ trigger.description }} — {{ trigger.customer_name }}"
+            start: "{{ steps.slot.slots[0].start }}"
+            duration: 8h
+          - id: deposit
+            label: Deposit invoice
+            use: doc.generate
+            template: deposit-invoice.md
+            data:
+              quote_number: "{{ trigger.quote_number }}"
+              customer: "{{ trigger.customer_name }}"
+              description: "{{ trigger.description }}"
+              amount: "{{ $number(trigger.amount) }}"
+              start_date: "{{ steps.hold.label }}"
+          - use: send.email
+            to: "{{ trigger.email }}"
+            subject: "You're booked in — deposit invoice for {{ trigger.quote_number }}"
+            text: "Great news! We've held {{ steps.hold.label }} as your start date. The deposit invoice is attached; paying it confirms the booking.\n\n{{ business.signature }}"
+            in_reply_to: "{{ steps.listen.event.message_id }}"
+            attach: ["{{ steps.deposit.file }}"]
+      - case: questions
+        label: questions
+        steps:
+          - use: notify.team
+            to: sales
+            text: "{{ trigger.customer_name }} has questions about {{ trigger.quote_number }}: {{ steps.listen.event.text }}"
+      - case: not_now
+        label: not now
+        steps:
+          - use: crm.update
+            object: deal
+            record_id: "{{ trigger.crm_id }}"
+            stage: closedlost
+            data: { lost_reason: "{{ steps.listen.event.text }}" }
+      - otherwise: true
+        label: no reply
+        steps:
+          - use: crm.update
+            object: deal
+            record_id: "{{ trigger.crm_id }}"
+            stage: closedlost
+            data: { lost_reason: no reply after 4 follow-ups }

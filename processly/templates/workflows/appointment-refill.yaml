@@ -1,0 +1,143 @@
+workflow: appointment-refill
+version: 4
+mode: auto
+description: When a patient cancels, release the slot and offer it to the waitlist; first YES gets it.
+
+triggers:
+  - id: wa
+    label: Cancellation message
+    use: trigger.whatsapp
+    match: [cancel, "can't make", cannot make, reschedule, "won't make"]
+  - id: cal
+    label: Cancelled in the clinic system
+    use: trigger.db_event
+    table: appointments
+    on: update
+    when: trigger.row.status = 'cancelled' and $not(trigger.old.status = 'cancelled')
+
+steps:
+  - id: classify
+    label: Understand
+    use: ai.classify
+    if: trigger_id = 'wa'
+    input: "{{ trigger.text }}"
+    labels:
+      cancel: they can't attend and aren't asking for a new time
+      reschedule: they want a different time
+      other: anything else
+
+  - id: appt
+    label: Find appointment
+    use: data.query
+    sql: |
+      SELECT id, patient_name, phone, service, practitioner, starts_at FROM appointments
+       WHERE id = coalesce($1::int, (
+         SELECT id FROM appointments
+          WHERE regexp_replace(phone, '\D', '', 'g') = $2 AND starts_at > now() AND status IN ('booked', 'cancelled')
+          ORDER BY starts_at LIMIT 1))
+    params: ["{{ trigger.row.id }}", "{{ trigger.from }}"]
+
+  - id: guard
+    label: Check
+    use: data.validate
+    on_fail: stop
+    rules:
+      - { name: found, check: steps.appt.first != null, message: no upcoming appointment for this patient }
+      - { name: cancelling, check: "trigger_id = 'cal' or steps.classify.label = 'cancel'", message: not a cancellation }
+
+  - id: release
+    label: Release
+    use: integration.call
+    if: trigger_id = 'wa'
+    connection: clinic
+    method: PATCH
+    path: "/appointments/{{ steps.appt.first.id }}"
+    body: { status: cancelled, reason: patient cancelled by WhatsApp }
+
+  - id: ack
+    label: Acknowledge
+    use: send.whatsapp
+    if: trigger_id = 'wa'
+    to: "{{ trigger.from }}"
+    text: "No problem, {{ $substringBefore(steps.appt.first.patient_name, ' ') }} — your appointment is cancelled. Reply here whenever you'd like to rebook."
+
+  - id: match
+    label: Match waitlist
+    use: data.query
+    sql: |
+      SELECT id, patient_name, phone FROM waitlist
+       WHERE active AND service = $1 ORDER BY created_at LIMIT 3
+    params: ["{{ steps.appt.first.service }}"]
+
+  - id: offer
+    label: Offer
+    use: control.loop
+    if: steps.match.count > 0
+    over: steps.match.rows
+    branches:
+      - label: each match
+        steps:
+          - id: send_offer
+            label: Slot offer
+            use: send.whatsapp
+            to: "{{ item.phone }}"
+            text: "Hi {{ $substringBefore(item.patient_name, ' ') }}! A {{ steps.appt.first.service }} slot just opened with {{ steps.appt.first.practitioner }} on {{ $formatTime(steps.appt.first.starts_at) }}. You're on our waitlist — want it?"
+            buttons: ["Yes, book me", "No thanks"]
+
+  - id: replies
+    label: Wait for YES
+    use: control.loop
+    if: steps.match.count > 0
+    over: steps.match.rows
+    stop_when: steps.reply.timed_out = true or $contains($lowercase(steps.reply.event.text), 'yes')
+    branches:
+      - label: each reply
+        steps:
+          - id: reply
+            use: control.wait
+            event: { channel: whatsapp, key: "{{ steps.match.rows.phone }}" }
+            timeout: 2h
+
+  - id: outcome
+    label: Book
+    use: control.branch
+    branches:
+      - label: someone said yes
+        when: steps.reply.received = true and $contains($lowercase(steps.reply.event.text), 'yes')
+        steps:
+          - id: winner
+            use: data.transform
+            set: { patient: "{{ steps.match.rows[phone = $$.steps.reply.event.from][0] }}" }
+          - id: book
+            label: Book
+            use: integration.call
+            connection: clinic
+            method: POST
+            path: /appointments
+            body:
+              patient_name: "{{ steps.winner.patient.patient_name }}"
+              phone: "{{ steps.winner.patient.phone }}"
+              service: "{{ steps.appt.first.service }}"
+              practitioner: "{{ steps.appt.first.practitioner }}"
+              starts_at: "{{ steps.appt.first.starts_at }}"
+              source: waitlist
+          - id: confirm
+            use: send.whatsapp
+            to: "{{ steps.winner.patient.phone }}"
+            text: "You're booked ✅ See you then. We'll send a reminder the day before."
+          - id: tidy
+            label: Tidy up
+            use: control.loop
+            over: steps.match.rows[phone != $$.steps.winner.patient.phone]
+            branches:
+              - label: others
+                steps:
+                  - use: send.whatsapp
+                    to: "{{ item.phone }}"
+                    text: "Thanks {{ $substringBefore(item.patient_name, ' ') }} — that slot has just been taken. You're still on the waitlist."
+      - label: nobody took it
+        otherwise: true
+        steps:
+          - use: notify.team
+            to: frontdesk
+            text: "Slot {{ $formatTime(steps.appt.first.starts_at) }} ({{ steps.appt.first.service }}) wasn't refilled from the waitlist."

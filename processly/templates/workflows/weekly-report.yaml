@@ -1,0 +1,76 @@
+workflow: weekly-report
+version: 9
+mode: auto
+description: Build the Monday report from the CRM, enrolments and ad spend before anyone arrives.
+
+triggers:
+  - id: cron
+    label: Mondays 08:00
+    use: trigger.schedule
+    cron: "0 8 * * MON"
+
+steps:
+  - id: leads
+    label: Leads
+    use: data.query
+    sql: |
+      SELECT count(*)::int AS leads,
+             count(*) FILTER (WHERE data->>'source' = 'whatsapp')::int AS whatsapp_leads
+        FROM crm_records WHERE object = 'lead' AND created_at >= now() - interval '7 days'
+
+  - id: enrolments
+    label: Enrolments
+    use: data.query
+    sql: SELECT count(*)::int AS enrolments, coalesce(sum(amount), 0)::float AS revenue FROM enrolments WHERE created_at >= now() - interval '7 days'
+
+  - id: spend
+    label: Ad spend
+    use: data.query
+    sql: |
+      SELECT channel, sum(amount)::float AS spend, sum(leads)::int AS leads
+        FROM ad_spend WHERE day >= current_date - 7 GROUP BY channel ORDER BY spend DESC
+
+  - id: aggregate
+    label: Aggregate
+    use: data.transform
+    set:
+      week: "{{ $substring(trigger.scheduled_at ? trigger.scheduled_at : run.started_at, 0, 10) }}"
+      leads: "{{ steps.leads.first.leads }}"
+      enrolments: "{{ steps.enrolments.first.enrolments }}"
+      revenue: "{{ steps.enrolments.first.revenue }}"
+      spend: "{{ $sum(steps.spend.rows.spend) }}"
+      cost_per_lead: "{{ steps.leads.first.leads > 0 ? $round($sum(steps.spend.rows.spend) / steps.leads.first.leads, 2) : null }}"
+      conversion: "{{ steps.leads.first.leads > 0 ? $round(steps.enrolments.first.enrolments / steps.leads.first.leads * 100, 1) : null }}"
+      channels: "{{ steps.spend.rows }}"
+
+  - id: summarize
+    label: Summarize
+    use: ai.summarize
+    input: "{{ steps.aggregate }}"
+    style: executive — for the owner, numbers first, one recommendation
+    flags: [anomaly, underperformer, opportunity]
+    max_words: 120
+
+  - id: pdf
+    label: Build PDF
+    use: doc.generate
+    template: weekly-report.md
+    title: "Weekly report — {{ steps.aggregate.week }}"
+    data:
+      week: "{{ steps.aggregate.week }}"
+      summary: "{{ steps.summarize.summary }}"
+      leads: "{{ steps.aggregate.leads }}"
+      enrolments: "{{ steps.aggregate.enrolments }}"
+      revenue: "{{ steps.aggregate.revenue }}"
+      spend: "{{ steps.aggregate.spend }}"
+      cost_per_lead: "{{ steps.aggregate.cost_per_lead }}"
+      channels: "{{ steps.aggregate.channels }}"
+      flags: "{{ steps.summarize.flags }}"
+
+  - id: deliver
+    label: Deliver
+    use: send.email
+    to: [maya@example.com, rana@example.com]
+    subject: "Weekly recap — {{ steps.aggregate.leads }} leads, {{ steps.aggregate.enrolments }} enrolments"
+    text: "{{ steps.summarize.summary }}\n\nFull breakdown attached."
+    attach: ["{{ steps.pdf.file }}"]

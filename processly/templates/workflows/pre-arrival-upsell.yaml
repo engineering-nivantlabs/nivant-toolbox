@@ -1,0 +1,114 @@
+workflow: pre-arrival-upsell
+version: 2
+mode: auto
+description: Three days before arrival, offer each guest the two extras that fit their stay, in their own language, and put accepted ones on the folio.
+
+triggers:
+  - id: booking
+    label: New reservation
+    use: trigger.db_event
+    table: reservations
+    on: insert
+
+steps:
+  - id: wait
+    label: Wait
+    use: control.wait
+    until: "{{ $addDuration(trigger.row.arrival & 'T09:00:00Z', '-3d') }}"
+
+  - id: still_on
+    use: data.query
+    sql: SELECT status FROM reservations WHERE id = $1
+    params: ["{{ trigger.row.id }}"]
+
+  - id: guard
+    use: data.validate
+    on_fail: stop
+    rules:
+      - { name: still booked, check: "steps.still_on.first.status = 'confirmed'", message: reservation cancelled or changed }
+
+  - id: catalog
+    use: data.query
+    sql: SELECT key, name, price::float AS price, description FROM upsells ORDER BY price
+
+  - id: pick
+    label: Pick offers
+    use: ai.decide
+    input: "{{ trigger.row }}"
+    options: "{{ steps.catalog.rows }}"
+    criteria: [fits their arrival time and stay length, fits the occasion in their notes, genuinely useful rather than pushy]
+    choose: 2
+
+  - id: write
+    label: Write
+    use: ai.generate
+    tone: warm and personal
+    brief: >-
+      Pre-arrival message: say we look forward to their arrival date, then offer the two extras with prices,
+      each tied to something about their stay. Ask them to reply YES to both, or name the one they want.
+    context: { reservation: "{{ trigger.row }}", offers: "{{ steps.pick.choices.option }}" }
+    max_words: 70
+
+  - id: translate
+    label: Translate
+    use: ai.translate
+    text: "{{ steps.write.text }}"
+    to: "{{ trigger.row.language ? trigger.row.language : 'en' }}"
+
+  - id: send
+    label: Send
+    use: send.whatsapp
+    to: "{{ trigger.row.phone }}"
+    text: "{{ steps.translate.text }}"
+
+  - id: answer
+    use: control.wait
+    event: { channel: whatsapp, key: "{{ trigger.row.phone }}" }
+    until: "{{ trigger.row.arrival & 'T12:00:00Z' }}"
+
+  - id: accepted
+    use: ai.extract
+    if: steps.answer.received = true
+    input: "Offers: {{ $join(steps.pick.choices.option.(key & ' = ' & name), '; ') }}\nGuest reply: {{ steps.answer.event.text }}"
+    instructions: Which offer keys did the guest accept? An empty list if none; a question counts as none.
+    fields:
+      keys: { type: array, description: accepted offer keys }
+      question: any question they asked
+
+  - id: reply
+    label: Reply
+    use: control.branch
+    if: steps.answer.received = true
+    branches:
+      - label: accepts
+        when: $count(steps.accepted.keys) > 0
+        steps:
+          - id: folio
+            label: Add to folio
+            use: control.loop
+            over: steps.pick.choices.option[key in $$.steps.accepted.keys]
+            branches:
+              - label: each extra
+                steps:
+                  - use: integration.call
+                    connection: pms
+                    path: "/reservations/{{ trigger.row.id }}/charges"
+                    body: { code: "{{ item.key }}", description: "{{ item.name }}", amount: "{{ item.price }}" }
+          - id: desk
+            label: Brief desk
+            use: notify.team
+            to: frontdesk
+            text: "{{ trigger.row.guest_name }} (arr. {{ trigger.row.arrival }}{{ trigger.row.flight_arrival ? ', lands ' & trigger.row.flight_arrival : '' }}) added: {{ $join(steps.pick.choices.option[key in $$.steps.accepted.keys].name, ', ') }}. Notes: {{ trigger.row.notes }}"
+          - id: thanks
+            use: ai.translate
+            text: "Wonderful — all arranged. See you soon!"
+            to: "{{ trigger.row.language ? trigger.row.language : 'en' }}"
+          - use: send.whatsapp
+            to: "{{ trigger.row.phone }}"
+            text: "{{ steps.thanks.text }}"
+      - label: asks a question
+        otherwise: true
+        steps:
+          - use: notify.team
+            to: frontdesk
+            text: "{{ trigger.row.guest_name }} replied to the pre-arrival message: {{ steps.answer.event.text }}"

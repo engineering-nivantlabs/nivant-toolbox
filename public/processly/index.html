@@ -600,10 +600,10 @@
   </footer>
 
   <script>
-    /* Load catalog, templates and runner relative to this page, even when it's served as /processly (no trailing slash). */
+    /* Load the engine's catalog + workflows, the templates and the runner relative to this page (works as /processly without a trailing slash too). */
     (function () {
       var p = location.pathname, base = /\/$|\.html?$/.test(p) ? '' : p.split('/').pop() + '/';
-      ['primitives.js', 'templates.js', 'runner.js'].forEach(function (f) {
+      ['primitives.js', 'workflows.js', 'templates.js', 'runner.js'].forEach(function (f) {
         var s = document.createElement('script'); s.src = base + f; s.async = false; document.body.appendChild(s);
       });
     })();

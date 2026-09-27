@@ -1,0 +1,127 @@
+workflow: admissions-overflow
+version: 6
+mode: auto
+description: Match every course enquiry to the right program and counsellor, and answer within a minute.
+
+triggers:
+  - id: form
+    label: Website enquiry
+    use: trigger.form
+  - id: wa
+    label: WhatsApp enquiry
+    use: trigger.whatsapp
+    types: [text]
+
+steps:
+  - id: contact
+    label: Normalize
+    use: data.transform
+    set:
+      name: "{{ trigger.name }}"
+      email: "{{ trigger.email ? $lowercase(trigger.email) : null }}"
+      phone: "{{ trigger_id = 'wa' ? trigger.from : (trigger.phone ? $replace($string(trigger.phone), /[^0-9]/, '') : null) }}"
+      message: "{{ trigger_id = 'wa' ? trigger.text : trigger.message }}"
+
+  - id: extract
+    label: Extract
+    use: ai.extract
+    input: "{{ steps.contact.message }}"
+    fields:
+      interest: subject or course they ask about
+      schedule: { type: string, enum: [daytime, evenings, weekends, flexible], description: when they can study }
+      background: their current job or studies
+      budget: { type: number, description: budget in USD if stated }
+
+  - id: programs
+    use: data.query
+    sql: SELECT id, name, schedule, format, fee, audience, description FROM programs ORDER BY name
+
+  - id: match
+    label: Match course
+    use: ai.decide
+    input: "{{ steps.extract }}"
+    options: "{{ steps.programs.rows }}"
+    criteria: [fits their schedule, fits their background and goal, within budget if stated]
+    choose: 2
+
+  - id: assign
+    label: Assign
+    use: data.query
+    sql: |
+      SELECT key, name, email FROM counsellors
+       ORDER BY (specialty ILIKE '%' || coalesce($1, '') || '%') DESC, open_leads LIMIT 1
+    params: ["{{ steps.extract.background }}"]
+
+  - id: slots
+    use: calendar.book
+    action: find_slots
+    calendar: "{{ 'counsellor-' & steps.assign.first.key }}"
+    duration: 20m
+    hours: [10, 20]
+    count: 3
+
+  - id: write
+    label: Write reply
+    use: ai.generate
+    format: email
+    brief: >-
+      Answer the enquiry. Recommend the best-matching program (and the second if it's close), say why it fits them,
+      introduce the counsellor by first name and offer the consult times. Keep it under 150 words.
+    context:
+      enquiry: "{{ steps.contact.message }}"
+      name: "{{ steps.contact.name }}"
+      matches: "{{ steps.match.choices }}"
+      counsellor: "{{ steps.assign.first.name }}"
+      consult_times: "{{ steps.slots.labels }}"
+    max_words: 150
+
+  - id: send
+    label: Send
+    use: send.email
+    if: steps.contact.email != null
+    to: "{{ steps.contact.email }}"
+    subject: "{{ steps.write.subject }}"
+    text: "{{ steps.write.text }}"
+
+  - id: send_wa
+    label: Send on WhatsApp
+    use: send.whatsapp
+    if: steps.contact.email = null and steps.contact.phone != null
+    to: "{{ steps.contact.phone }}"
+    text: "{{ steps.write.text }}"
+
+  - id: crm
+    use: crm.create
+    object: lead
+    stage: new
+    data:
+      name: "{{ steps.contact.name }}"
+      email: "{{ steps.contact.email }}"
+      phone: "{{ steps.contact.phone }}"
+      program: "{{ steps.match.choice.name }}"
+      counsellor: "{{ steps.assign.first.key }}"
+
+  - id: brief
+    use: notify.team
+    to: "{{ steps.assign.first.email }}"
+    channel: email
+    text: "New enquiry for you: {{ steps.contact.name }} → {{ steps.match.choice.name }} ({{ $round(steps.match.choices[0].score * 100) }}% fit). {{ steps.match.choices[0].reason }}"
+
+  - id: booked
+    label: Booked?
+    use: control.wait
+    event: { channel: email, key: "{{ steps.contact.email ? steps.contact.email : steps.contact.phone }}" }
+    timeout: 48h
+
+  - id: nudge
+    use: send.whatsapp
+    if: steps.booked.timed_out = true and steps.contact.phone != null
+    to: "{{ steps.contact.phone }}"
+    text: "Hi {{ $substringBefore(steps.contact.name, ' ') }}, {{ steps.assign.first.name }} here — happy to answer anything about {{ steps.match.choice.name }}. Want me to hold one of those consult times for you?"
+
+  - id: handoff
+    use: notify.team
+    if: steps.booked.received = true
+    to: "{{ steps.assign.first.email }}"
+    channel: email
+    text: "{{ steps.contact.name }} replied: {{ steps.booked.event.text }}"

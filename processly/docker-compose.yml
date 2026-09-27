@@ -1,0 +1,30 @@
+# Local or single-server deployment: Postgres + one engine process.
+# Scale out later by running `worker` containers alongside `serve`.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: processly
+      POSTGRES_DB: processly
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  engine:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:processly@db:5432/processly
+    volumes:
+      - ./templates:/config:ro     # swap for the client's project directory
+      - files:/data
+    ports: ["8080:8080"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  files:

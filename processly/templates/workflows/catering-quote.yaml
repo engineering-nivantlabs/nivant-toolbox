@@ -1,0 +1,123 @@
+workflow: catering-quote
+version: 2
+mode: auto
+description: Price catering enquiries from email, WhatsApp or the website in minutes, with the manager approving every quote.
+
+triggers:
+  - id: mail
+    label: Email to events@
+    use: trigger.email
+    inbox: events@
+  - id: wa
+    use: trigger.whatsapp
+    match: [catering, event, party, buffet]
+  - id: form
+    use: trigger.form
+
+steps:
+  - id: contact
+    use: data.transform
+    set:
+      name: "{{ trigger_id = 'mail' ? trigger.from_name : trigger.name }}"
+      email: "{{ trigger_id = 'mail' ? trigger.from : trigger.email }}"
+      phone: "{{ trigger_id = 'wa' ? trigger.from : trigger.phone }}"
+      message: "{{ trigger_id = 'mail' ? trigger.subject & '\n' & trigger.text : (trigger_id = 'wa' ? trigger.text : trigger.message) }}"
+
+  - id: extract
+    label: Extract
+    use: ai.extract
+    input: "{{ steps.contact.message }}"
+    fields:
+      event_date: { type: string, description: event date as YYYY-MM-DD }
+      guests: { type: integer }
+      budget: { type: number, description: total budget }
+      dietary: dietary needs, with counts if given
+      company: company or organisation name
+      venue: where the event is
+
+  - id: validate
+    label: Validate
+    use: data.validate
+    rules:
+      - { name: date, check: "steps.extract.event_date != null and $daysUntil(steps.extract.event_date) >= 7", message: we need at least 7 days' notice }
+      - { name: size, check: steps.extract.guests != null and steps.extract.guests >= 20 and steps.extract.guests <= 300, message: we cater for 20 to 300 guests }
+
+  - id: capacity
+    label: Check capacity
+    use: data.query
+    sql: SELECT coalesce(sum(guests), 0)::int AS booked FROM catering_events WHERE event_date = $1::date
+    params: ["{{ steps.extract.event_date }}"]
+
+  - id: decide
+    use: control.branch
+    branches:
+      - label: can't do it
+        when: steps.validate.valid = false or steps.capacity.first.booked + steps.extract.guests > 350
+        steps:
+          - id: decline
+            use: ai.generate
+            format: email
+            brief: Politely explain we can't take this booking and why (from the reasons). Suggest what would work if anything does (another date, a smaller group).
+            context: { enquiry: "{{ steps.contact.message }}", reasons: "{{ steps.validate.failures.message }}", fully_booked: "{{ steps.capacity.first.booked + steps.extract.guests > 350 }}" }
+          - use: send.email
+            if: steps.contact.email != null
+            to: "{{ steps.contact.email }}"
+            subject: "{{ steps.decline.subject }}"
+            text: "{{ steps.decline.text }}"
+      - label: quote it
+        otherwise: true
+        steps:
+          - id: packages
+            use: data.query
+            sql: SELECT name, per_head::float AS per_head, description FROM menu_packages WHERE $1::int BETWEEN min_guests AND max_guests ORDER BY per_head
+            params: ["{{ steps.extract.guests }}"]
+          - id: pick
+            label: Pick menu
+            use: ai.decide
+            input: "{{ steps.extract }}"
+            options: "{{ steps.packages.rows }}"
+            criteria: [fits the budget per head, suits the occasion, covers the dietary needs]
+          - id: price
+            use: data.transform
+            set:
+              quote_number: "{{ 'C-' & $substring(run.id, 0, 6) }}"
+              client: "{{ steps.extract.company ? steps.extract.company : steps.contact.name }}"
+              event_date: "{{ steps.extract.event_date }}"
+              guests: "{{ steps.extract.guests }}"
+              package: "{{ steps.pick.choice }}"
+              extras: []
+              total: "{{ $round(steps.extract.guests * steps.pick.choice.per_head, 2) }}"
+              notes: "{{ steps.extract.dietary ? 'Dietary: ' & steps.extract.dietary : '' }}"
+          - id: quote
+            label: Build quote
+            use: doc.generate
+            template: catering-quote.md
+            data: "{{ steps.price }}"
+            filename: "{{ 'quote-' & steps.price.quote_number & '.pdf' }}"
+          - id: approve
+            label: Approval
+            use: control.approval
+            approver: manager
+            title: "Catering quote {{ steps.price.quote_number }}: {{ steps.price.guests }} guests, ${{ steps.price.total }}"
+            detail: { enquiry: "{{ steps.contact.message }}", package: "{{ steps.pick.choice.name }}", why: "{{ steps.pick.choices[0].reason }}", total: "{{ steps.price.total }}" }
+            timeout: 2h
+            on_timeout: reject
+          - id: cover
+            use: ai.generate
+            format: email
+            brief: Covering email for the attached catering quote. Confirm the date is open, name the menu and total, mention the dietary arrangements, ask if they'd like to hold the date.
+            context: { quote: "{{ steps.price }}", enquiry: "{{ steps.contact.message }}" }
+          - id: send
+            label: Send
+            use: send.email
+            to: "{{ steps.contact.email }}"
+            subject: "{{ steps.cover.subject }}"
+            text: "{{ steps.cover.text }}"
+            in_reply_to: "{{ trigger.message_id }}"
+            attach: ["{{ steps.quote.file }}"]
+          - id: crm
+            label: CRM
+            use: crm.create
+            object: deal
+            stage: quoted
+            data: { name: "{{ steps.price.client }}", amount: "{{ steps.price.total }}", event_date: "{{ steps.price.event_date }}", email: "{{ steps.contact.email }}" }

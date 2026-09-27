@@ -1,0 +1,17 @@
+# People workflows can notify, assign tasks to, or ask for approval.
+# `to:` in a workflow can be a key below, a role, "team" (everyone), or a raw email/phone.
+manager:
+  name: Maya
+  email: maya@example.com
+  whatsapp: "971500000001"
+  roles: [manager, approver, accounts]
+sales:
+  name: Rana
+  email: rana@example.com
+  whatsapp: "971500000002"
+  roles: [sales, agent]
+frontdesk:
+  name: Front desk
+  email: frontdesk@example.com
+  slack: true
+  roles: [frontdesk, support]

@@ -1,0 +1,78 @@
+workflow: review-harvester
+version: 5
+mode: auto
+description: A day after each job, ask how it went. Happy customers get a one-tap Google link; unhappy ones reach the manager first.
+
+triggers:
+  - id: done
+    label: Job completed
+    use: trigger.db_event
+    table: jobs
+    on: update
+    when: trigger.row.status = 'completed' and $not(trigger.old.status = 'completed')
+
+steps:
+  - id: wait
+    label: Wait a day
+    use: control.wait
+    for: 24h
+
+  - id: ask
+    label: Ask
+    use: send.whatsapp
+    to: "{{ trigger.row.phone }}"
+    text: "Hi {{ $substringBefore(trigger.row.customer_name, ' ') }}, hope the {{ trigger.row.service }} is all good! Quick one: how did {{ trigger.row.technician }} do, 1 to 5? If anything fell short, tell us here and we'll fix it first."
+
+  - id: answer
+    label: Wait for answer
+    use: control.wait
+    event: { channel: whatsapp, key: "{{ trigger.row.phone }}" }
+    timeout: 3d
+
+  - id: read
+    label: Read reply
+    use: ai.sentiment
+    if: steps.answer.received = true
+    input: "{{ steps.answer.event.text }}"
+    rating_scale: 5
+
+  - id: route
+    label: Route
+    use: control.branch
+    if: steps.answer.received = true
+    branches:
+      - label: happy (4–5★)
+        when: steps.read.rating >= 4 or (steps.read.rating = null and steps.read.sentiment = 'positive')
+        steps:
+          - id: google
+            label: Google link
+            use: send.whatsapp
+            to: "{{ trigger.row.phone }}"
+            text: "That made our day, thank you! 🙏 Would you share it on Google? It takes 20 seconds and really helps a small team: https://g.page/r/YOUR-PLACE-ID/review — and here's 10% off your next visit: THANKS10"
+      - label: unhappy (1–3★)
+        otherwise: true
+        steps:
+          - id: alert
+            label: Alert manager
+            use: notify.team
+            to: manager
+            text: "⚠️ {{ trigger.row.customer_name }} rated job #{{ trigger.row.id }} ({{ trigger.row.service }}, {{ trigger.row.technician }}) {{ steps.read.rating ? steps.read.rating & '★' : steps.read.sentiment }}: \"{{ steps.answer.event.text }}\""
+          - id: draft
+            label: Draft recovery
+            use: ai.generate
+            tone: apologetic, specific, no excuses
+            brief: Reply to an unhappy customer. Acknowledge exactly what went wrong, apologise once, and offer to send someone back at no charge this week.
+            context: { job: "{{ trigger.row }}", feedback: "{{ steps.answer.event.text }}", sentiment: "{{ steps.read }}" }
+          - id: approve
+            label: Approval
+            use: control.approval
+            note: a human approves before sending
+            approver: manager
+            title: "Recovery reply to {{ trigger.row.customer_name }}"
+            detail: { feedback: "{{ steps.answer.event.text }}", draft: "{{ steps.draft.text }}" }
+            timeout: 4h
+            on_reject: continue
+          - use: send.whatsapp
+            if: steps.approve.decision = 'approved'
+            to: "{{ trigger.row.phone }}"
+            text: "{{ steps.approve.edits.text ? steps.approve.edits.text : steps.draft.text }}"

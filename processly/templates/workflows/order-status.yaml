@@ -1,0 +1,117 @@
+workflow: order-status
+version: 8
+mode: auto
+description: Answer "where's my order?" instantly in the customer's language; route returns and complaints to people.
+
+triggers:
+  - id: wa
+    use: trigger.whatsapp
+    types: [text]
+  - id: mail
+    use: trigger.email
+    inbox: support@
+
+steps:
+  - id: msg
+    use: data.transform
+    set:
+      text: "{{ trigger_id = 'mail' ? trigger.subject & '\n' & trigger.text : trigger.text }}"
+      from: "{{ trigger.from }}"
+      name: "{{ trigger_id = 'mail' ? trigger.from_name : trigger.name }}"
+
+  - id: classify
+    label: Classify
+    use: ai.classify
+    input: "{{ steps.msg.text }}"
+    detect_language: true
+    labels:
+      order_status: asking where an order is or when it arrives
+      return: wants to return or exchange something
+      complaint: unhappy about product, delivery or service
+      other: anything else
+
+  - id: mood
+    label: Sentiment
+    use: ai.sentiment
+    input: "{{ steps.msg.text }}"
+
+  - id: route
+    label: Route
+    use: control.switch
+    on: "steps.mood.sentiment = 'negative' and steps.mood.urgency = 'high' ? 'complaint' : steps.classify.label"
+    branches:
+      - case: order_status
+        label: order status
+        steps:
+          - id: number
+            use: ai.extract
+            input: "{{ steps.msg.text }}"
+            fields: { order_number: "the order number, digits only" }
+          - id: lookup
+            label: Find order
+            use: data.query
+            sql: |
+              SELECT number, customer_name, status, shipped_at, carrier, tracking_number, items FROM orders
+               WHERE number = $1 OR regexp_replace(coalesce(phone, ''), '\D', '', 'g') = $2 OR lower(email) = lower($2)
+               ORDER BY (number = $1) DESC, shipped_at DESC NULLS LAST LIMIT 1
+            params: ["{{ steps.number.order_number }}", "{{ steps.msg.from }}"]
+          - id: track
+            label: Tracking
+            use: data.enrich
+            if: steps.lookup.first.tracking_number != null
+            connection: carrier
+            path: "/track/{{ steps.lookup.first.carrier }}/{{ steps.lookup.first.tracking_number }}"
+            on_error: continue
+          - id: write
+            label: Write answer
+            use: ai.generate
+            brief: >-
+              Tell the customer where their order is and when it should arrive, using only the order and tracking data.
+              If no order was found, ask for their order number. Include the tracking link if there is one.
+            context: { order: "{{ steps.lookup.first }}", tracking: "{{ steps.track.data }}", message: "{{ steps.msg.text }}" }
+            max_words: 60
+          - id: translate
+            label: Translate
+            use: ai.translate
+            text: "{{ steps.write.text }}"
+            to: "{{ steps.classify.language ? steps.classify.language : 'en' }}"
+          - id: reply
+            label: Reply
+            use: send.whatsapp
+            if: trigger_id = 'wa'
+            to: "{{ steps.msg.from }}"
+            text: "{{ steps.translate.text }}"
+          - id: reply_mail
+            use: send.email
+            if: trigger_id = 'mail'
+            to: "{{ steps.msg.from }}"
+            subject: "Re: {{ trigger.subject }}"
+            text: "{{ steps.translate.text }}"
+            in_reply_to: "{{ trigger.message_id }}"
+      - case: return
+        label: return
+        steps:
+          - id: return_task
+            use: task.create
+            assignee: frontdesk
+            title: "Return request from {{ steps.msg.name ? steps.msg.name : steps.msg.from }}"
+            body: "{{ steps.msg.text }}"
+            due_in: 1d
+          - use: send.whatsapp
+            if: trigger_id = 'wa'
+            to: "{{ steps.msg.from }}"
+            text: "Thanks — we've logged your return and someone from our team will message you today with the next steps."
+      - otherwise: true
+        label: complaint or other
+        steps:
+          - id: brief
+            use: ai.summarize
+            input: { message: "{{ steps.msg.text }}", sentiment: "{{ steps.mood }}" }
+            style: one-line brief for a support agent
+            max_words: 40
+          - id: ticket
+            use: task.create
+            assignee: frontdesk
+            title: "{{ steps.mood.urgency = 'high' ? '🔴 ' : '' }}{{ steps.brief.summary }}"
+            body: "From {{ steps.msg.from }} ({{ trigger_id }}): {{ steps.msg.text }}"
+            due_in: "{{ steps.mood.urgency = 'high' ? '1h' : '1d' }}"

@@ -1,0 +1,96 @@
+workflow: failed-payment-rescue
+version: 4
+mode: auto
+description: When a membership payment fails, retry smartly, ask for a new card, and offer a pause before anyone churns.
+
+triggers:
+  - id: failed
+    label: Stripe invoice.payment_failed
+    use: trigger.api
+    event: invoice.payment_failed
+    # Stripe sends { event, object: <invoice> } via /hooks/stripe
+
+steps:
+  - id: member
+    label: Find member
+    use: data.query
+    sql: SELECT id, name, phone, email, plan FROM members WHERE stripe_customer = $1
+    params: ["{{ trigger.object.customer }}"]
+
+  - id: guard
+    use: data.validate
+    on_fail: stop
+    rules:
+      - { name: known member, check: steps.member.first != null, message: no member for this Stripe customer }
+
+  - id: retry
+    label: Retry
+    use: control.retry
+    backoff: [1h, 1d]
+    on_exhausted: continue
+    branches:
+      - label: each attempt
+        steps:
+          - id: charge
+            label: Charge
+            use: integration.call
+            connection: stripe
+            method: POST
+            path: "/invoices/{{ trigger.object.id }}/pay"
+
+  - id: notify
+    label: Ask for new card
+    use: send.whatsapp
+    if: steps.retry.ok = false
+    to: "{{ steps.member.first.phone }}"
+    text: "Hi {{ $substringBefore(steps.member.first.name, ' ') }}, this month's payment for your {{ steps.member.first.plan }} membership didn't go through (the card may have expired). You can update it here: {{ trigger.object.hosted_invoice_url }} — or reply PAUSE and we'll pause a month instead, streak kept."
+
+  - id: listen
+    label: Wait
+    use: control.wait
+    if: steps.retry.ok = false
+    event: { channel: whatsapp, key: "{{ steps.member.first.phone }}" }
+    timeout: 48h
+
+  - id: outcome
+    label: Save
+    use: control.branch
+    if: steps.retry.ok = false
+    branches:
+      - label: asked to pause
+        when: steps.listen.received = true and $contains($uppercase(steps.listen.event.text), 'PAUSE')
+        steps:
+          - id: pause
+            label: Pause
+            use: integration.call
+            connection: stripe
+            method: POST
+            path: "/subscriptions/{{ trigger.object.subscription }}"
+            body: { pause_collection: { behavior: void } }
+          - use: send.whatsapp
+            to: "{{ steps.member.first.phone }}"
+            text: "Done — your membership is paused for a month and your streak is safe. See you soon!"
+      - label: other reply
+        when: steps.listen.received = true
+        steps:
+          - use: notify.team
+            to: frontdesk
+            text: "{{ steps.member.first.name }} replied about their failed payment: {{ steps.listen.event.text }}"
+      - label: no reply
+        otherwise: true
+        steps:
+          - id: check
+            use: integration.call
+            connection: stripe
+            method: GET
+            path: "/invoices/{{ trigger.object.id }}"
+          - id: winback
+            label: Win-back offer
+            use: ai.generate
+            if: $not(steps.check.data.status = 'paid')
+            brief: One short, kind message offering to pause the membership for a month instead of losing it. Mention they keep their streak. Ask them to reply PAUSE or update their card.
+            context: { member: "{{ steps.member.first }}", update_link: "{{ trigger.object.hosted_invoice_url }}" }
+          - use: send.whatsapp
+            if: $not(steps.check.data.status = 'paid')
+            to: "{{ steps.member.first.phone }}"
+            text: "{{ steps.winback.text }}"
